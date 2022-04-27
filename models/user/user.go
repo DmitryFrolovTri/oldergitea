@@ -146,6 +146,10 @@ type User struct {
 	DiffViewStyle       string `xorm:"NOT NULL DEFAULT ''"`
 	Theme               string `xorm:"NOT NULL DEFAULT ''"`
 	KeepActivityPrivate bool   `xorm:"NOT NULL DEFAULT false"`
+
+	// Ограничение пространства
+	QuotaKb     int64 `xorm:"NOT NULL DEFAULT 10000"` // 0 - нет ограничений
+	SpaceUsedKb int64 `xorm:"NOT NULL DEFAULT 18"`
 }
 
 func init() {
