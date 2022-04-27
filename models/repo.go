@@ -298,9 +298,33 @@ func updateRepoSize(e db.Engine, repo *repo_model.Repository) error {
 	return err
 }
 
+func updateRepoSizesForUser(e db.Engine, ownerID int64) error {
+	user := user_model.User{ID: ownerID}
+	has, err := e.Get(&user)
+	if !has {
+		return fmt.Errorf("updateRepoSizesForUser: user %v not found", ownerID)
+	} else if err != nil {
+		return err
+	}
+
+	totalSize, err := e.Where("owner_id = ?", user.ID).SumInt(new(repo_model.Repository), "size")
+	if err != nil {
+		return fmt.Errorf("updateRepoSizesForUser: %v", err)
+	}
+	user.SpaceUsedKb = totalSize / 1024
+	_, err = e.ID(user.ID).NoAutoTime().Update(new(user_model.User))
+	return err
+}
+
 // UpdateRepoSize updates the repository size, calculating it using util.GetDirectorySize
-func UpdateRepoSize(ctx context.Context, repo *repo_model.Repository) error {
-	return updateRepoSize(db.GetEngine(ctx), repo)
+func UpdateRepoSize(ctx context.Context, repo *repo_model.Repository) (err error) {
+	e := db.GetEngine(ctx)
+	err = updateRepoSize(e, repo)
+	if err != nil {
+		return err
+	}
+	err = updateRepoSizesForUser(e, repo.OwnerID)
+	return
 }
 
 // CanUserForkRepo returns true if specified user can fork repository.
