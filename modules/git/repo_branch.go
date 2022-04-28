@@ -8,6 +8,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -145,6 +146,12 @@ func (repo *Repository) CreateBranch(branch, oldbranchOrCommit string) error {
 
 	_, err := cmd.RunInDir(repo.Path)
 
+	return err
+}
+
+func (repo *Repository) SetReceiveMaxInputSize(sizeInBytes int64) error {
+	cmd := NewCommandContext(repo.Ctx, "config", "receive.maxInputSize", strconv.FormatInt(sizeInBytes, 10))
+	_, err := cmd.RunInDir(repo.Path)
 	return err
 }
 

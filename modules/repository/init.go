@@ -239,13 +239,16 @@ func initRepository(ctx context.Context, repoPath string, u *user_model.User, re
 
 	repo.DefaultBranch = setting.Repository.DefaultBranch
 
+	gitRepo, err := git.OpenRepository(repo.RepoPath())
+	if err != nil {
+		return fmt.Errorf("openRepository: %v", err)
+	}
+	defer gitRepo.Close()
+
+	gitRepo.SetReceiveMaxInputSize(1024) // 1 Kb
+
 	if len(opts.DefaultBranch) > 0 {
 		repo.DefaultBranch = opts.DefaultBranch
-		gitRepo, err := git.OpenRepository(repo.RepoPath())
-		if err != nil {
-			return fmt.Errorf("openRepository: %v", err)
-		}
-		defer gitRepo.Close()
 		if err = gitRepo.SetDefaultBranch(repo.DefaultBranch); err != nil {
 			return fmt.Errorf("setDefaultBranch: %v", err)
 		}
