@@ -300,7 +300,7 @@ func updateRepoSize(e db.Engine, repo *repo_model.Repository) error {
 
 func updateRepoSizesForUser(e db.Engine, ownerID int64) error {
 	user := user_model.User{ID: ownerID}
-	has, err := e.Get(&user)
+	has, err := e.Get(&user) // это лишнее?
 	if !has {
 		return fmt.Errorf("updateRepoSizesForUser: user %v not found", ownerID)
 	} else if err != nil {
@@ -312,7 +312,7 @@ func updateRepoSizesForUser(e db.Engine, ownerID int64) error {
 		return fmt.Errorf("updateRepoSizesForUser: %v", err)
 	}
 	user.SpaceUsedKb = totalSize / 1024
-	_, err = e.ID(user.ID).NoAutoTime().Update(new(user_model.User))
+	_, err = e.ID(user.ID).Cols("space_used_kb").NoAutoTime().Update(new(user_model.User))
 	return err
 }
 
