@@ -295,6 +295,11 @@ func updateRepoSize(e db.Engine, repo *repo_model.Repository) error {
 
 	repo.Size = size + lfsSize
 	_, err = e.ID(repo.ID).Cols("size").NoAutoTime().Update(repo)
+
+	if err == nil {
+		err = updateRepoSizesForUser(e, repo.OwnerID)
+	}
+
 	return err
 }
 
@@ -312,19 +317,14 @@ func updateRepoSizesForUser(e db.Engine, ownerID int64) error {
 		return fmt.Errorf("updateRepoSizesForUser: %v", err)
 	}
 	user.SpaceUsedKb = totalSize / 1024
-	_, err = e.ID(user.ID).Cols("space_used_kb").NoAutoTime().Update(new(user_model.User))
+	_, err = e.ID(user.ID).Cols("space_used_kb").NoAutoTime().Update(user)
 	return err
 }
 
 // UpdateRepoSize updates the repository size, calculating it using util.GetDirectorySize
 func UpdateRepoSize(ctx context.Context, repo *repo_model.Repository) (err error) {
 	e := db.GetEngine(ctx)
-	err = updateRepoSize(e, repo)
-	if err != nil {
-		return err
-	}
-	err = updateRepoSizesForUser(e, repo.OwnerID)
-	return
+	return updateRepoSize(e, repo)
 }
 
 // CanUserForkRepo returns true if specified user can fork repository.
