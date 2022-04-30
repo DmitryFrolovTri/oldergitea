@@ -180,6 +180,7 @@ func BatchHandler(ctx *context.Context) {
 	contentStore := lfs_module.NewContentStore()
 
 	var responseObjects []*lfs_module.ObjectResponse
+	var totalLfsSize int64
 
 	for _, p := range br.Objects {
 		if !p.IsValid() {
@@ -215,10 +216,25 @@ func BatchHandler(ctx *context.Context) {
 		var responseObject *lfs_module.ObjectResponse
 		if isUpload {
 			var err *lfs_module.ObjectError
-			if !exists && setting.LFS.MaxFileSize > 0 && p.Size > setting.LFS.MaxFileSize {
-				err = &lfs_module.ObjectError{
-					Code:    http.StatusUnprocessableEntity,
-					Message: fmt.Sprintf("Size must be less than or equal to %d", setting.LFS.MaxFileSize),
+			if !exists && setting.LFS.MaxFileSize > 0 {
+				if p.Size > setting.LFS.MaxFileSize {
+					err = &lfs_module.ObjectError{
+						Code:    http.StatusUnprocessableEntity,
+						Message: fmt.Sprintf("Size must be less than or equal to %d bytes", setting.LFS.MaxFileSize),
+					}
+					log.Error("Error (LFS overflow): %v", err)
+					writeStatusMessage(ctx, http.StatusInternalServerError, "Превышение размера LFS")
+					return
+				}
+				totalLfsSize += p.Size
+				if totalLfsSize > setting.LFS.MaxFileSize {
+					err = &lfs_module.ObjectError{
+						Code:    http.StatusUnprocessableEntity,
+						Message: fmt.Sprintf("Суммарный размер LFS файлов в отправке не должен превышать %d bytes", setting.LFS.MaxFileSize),
+					}
+					log.Error("Error (LFS overflow): %v", err)
+					writeStatusMessage(ctx, http.StatusInternalServerError, "Превышение размера LFS пакетом")
+					return
 				}
 			}
 
