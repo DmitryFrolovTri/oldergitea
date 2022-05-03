@@ -1527,6 +1527,7 @@ func ViewIssue(ctx *context.Context) {
 				ctx.ServerError("GetUserRepoPermission", err)
 				return
 			}
+			// здесь некритично проверять квоту, т.к. это только отрисовка страницы
 			ctx.Data["AllowMerge"], err = pull_service.IsUserAllowedToMerge(pull, perm, ctx.User)
 			if err != nil {
 				ctx.ServerError("IsUserAllowedToMerge", err)

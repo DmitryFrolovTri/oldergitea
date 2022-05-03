@@ -103,6 +103,9 @@ func (ctx *Context) IsUserRepoAdmin() bool {
 
 // IsUserRepoWriter returns true if current user has write privilege in current repo
 func (ctx *Context) IsUserRepoWriter(unitTypes []unit.Type) bool {
+	if !ctx.Repo.ВПределахКвотыЛи() {
+		return false
+	}
 	for _, unitType := range unitTypes {
 		if ctx.Repo.CanWrite(unitType) {
 			return true

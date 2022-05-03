@@ -149,6 +149,7 @@ func GetUserRepoPermission(repo *repo_model.Repository, user *user_model.User) (
 }
 
 func getUserRepoPermission(ctx context.Context, repo *repo_model.Repository, user *user_model.User) (perm Permission, err error) {
+	// FIXME здесь не хватает проверки на квоту
 	if log.IsTrace() {
 		defer func() {
 			if user == nil {
