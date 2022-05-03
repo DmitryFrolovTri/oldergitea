@@ -384,7 +384,7 @@ func renderEditPage(ctx *context.Context) {
 func WikiPost(ctx *context.Context) {
 	switch ctx.FormString("action") {
 	case "_new":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !(ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи()) {
 			ctx.NotFound(ctx.Req.URL.RequestURI(), nil)
 			return
 		}
@@ -399,7 +399,7 @@ func WikiPost(ctx *context.Context) {
 		return
 	}
 
-	if !ctx.Repo.CanWrite(unit.TypeWiki) {
+	if !(ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи()) {
 		ctx.NotFound(ctx.Req.URL.RequestURI(), nil)
 		return
 	}
@@ -409,7 +409,7 @@ func WikiPost(ctx *context.Context) {
 // Wiki renders single wiki page
 func Wiki(ctx *context.Context) {
 	ctx.Data["PageIsWiki"] = true
-	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
+	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи() && !ctx.Repo.Repository.IsArchived
 
 	switch ctx.FormString("action") {
 	case "_pages":
@@ -419,14 +419,14 @@ func Wiki(ctx *context.Context) {
 		WikiRevision(ctx)
 		return
 	case "_edit":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !(ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи()) {
 			ctx.NotFound(ctx.Req.URL.RequestURI(), nil)
 			return
 		}
 		EditWiki(ctx)
 		return
 	case "_new":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !(ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи()) {
 			ctx.NotFound(ctx.Req.URL.RequestURI(), nil)
 			return
 		}
@@ -474,7 +474,7 @@ func Wiki(ctx *context.Context) {
 // WikiRevision renders file revision list of wiki page
 func WikiRevision(ctx *context.Context) {
 	ctx.Data["PageIsWiki"] = true
-	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
+	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи() && !ctx.Repo.Repository.IsArchived
 
 	if !ctx.Repo.Repository.HasWiki() {
 		ctx.Data["Title"] = ctx.Tr("repo.wiki")
@@ -519,7 +519,7 @@ func WikiPages(ctx *context.Context) {
 
 	ctx.Data["Title"] = ctx.Tr("repo.wiki.pages")
 	ctx.Data["PageIsWiki"] = true
-	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
+	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && ctx.Repo.ВПределахКвотыЛи() && !ctx.Repo.Repository.IsArchived
 
 	wikiRepo, commit, err := findWikiRepoCommit(ctx)
 	if err != nil {

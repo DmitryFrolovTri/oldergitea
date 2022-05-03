@@ -252,11 +252,21 @@ func (u *User) MaxCreationLimit() int {
 	return u.MaxRepoCreation
 }
 
+func (u *User) ВПределахКвотыЛи() bool {
+	if u.SpaceUsedKb == 0 {
+		log.Error("ВПределахКвотыЛи(): SpaceUsedKb = 0. Пользователь не загружен?")
+	}
+	return u.QuotaKb >= u.SpaceUsedKb
+}
+
 // CanCreateRepo returns if user login can create a repository
 // NOTE: functions calling this assume a failure due to repository count limit; if new checks are added, those functions should be revised
 func (u *User) CanCreateRepo() bool {
 	if u.IsAdmin {
 		return true
+	}
+	if !u.ВПределахКвотыЛи() {
+		return false
 	}
 	if u.MaxRepoCreation <= -1 {
 		if setting.Repository.MaxCreationLimit <= -1 {

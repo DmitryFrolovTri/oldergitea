@@ -871,6 +871,13 @@ func MergePullRequest(ctx *context.Context) {
 		ctx.ServerError("IsUserAllowedToMerge", err)
 		return
 	}
+
+	// FIXME в процессе участвуют два репозитория, какой из них нужен?
+	if !ctx.Repo.ВПределахКвотыЛи() {
+		ctx.Flash.Error("Владелец репозитория превысил квоту")
+		ctx.Redirect(issue.Link())
+		return
+	}
 	if !allowedMerge {
 		ctx.Flash.Error(ctx.Tr("repo.pulls.update_not_allowed"))
 		ctx.Redirect(issue.Link())
@@ -1101,7 +1108,7 @@ func CompareAndPullRequestPost(ctx *context.Context) {
 	ctx.Data["PullRequestWorkInProgressPrefixes"] = setting.Repository.PullRequest.WorkInProgressPrefixes
 	ctx.Data["IsAttachmentEnabled"] = setting.Attachment.Enabled
 	upload.AddUploadContext(ctx, "comment")
-	ctx.Data["HasIssuesOrPullsWritePermission"] = ctx.Repo.CanWrite(unit.TypePullRequests)
+	ctx.Data["HasIssuesOrPullsWritePermission"] = ctx.Repo.CanWrite(unit.TypePullRequests) && ctx.Repo.ВПределахКвотыЛи()
 
 	var (
 		repo        = ctx.Repo.Repository

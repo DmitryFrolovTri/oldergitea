@@ -22,7 +22,7 @@ func RequireRepoAdmin() func(ctx *Context) {
 // RequireRepoWriter returns a middleware for requiring repository write to the specify unitType
 func RequireRepoWriter(unitType unit.Type) func(ctx *Context) {
 	return func(ctx *Context) {
-		if !ctx.Repo.CanWrite(unitType) {
+		if !ctx.Repo.CanWrite(unitType) || !ctx.Repo.ВПределахКвотыЛи() {
 			ctx.NotFound(ctx.Req.URL.RequestURI(), nil)
 			return
 		}
@@ -32,6 +32,10 @@ func RequireRepoWriter(unitType unit.Type) func(ctx *Context) {
 // RequireRepoWriterOr returns a middleware for requiring repository write to one of the unit permission
 func RequireRepoWriterOr(unitTypes ...unit.Type) func(ctx *Context) {
 	return func(ctx *Context) {
+		if !ctx.Repo.ВПределахКвотыЛи() {
+			ctx.NotFound(ctx.Req.URL.RequestURI(), nil)
+			return
+		}
 		for _, unitType := range unitTypes {
 			if ctx.Repo.CanWrite(unitType) {
 				return
