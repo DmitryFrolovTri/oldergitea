@@ -263,7 +263,9 @@ func updateWikiPage(doer *user_model.User, repo *repo_model.Repository, oldWikiN
 		return fmt.Errorf("Push: %v", err)
 	}
 
-	return nil
+	err = models.UpdateRepoSize(gitRepo.Ctx, repo)
+
+	return err
 }
 
 // AddWikiPage adds a new wiki page with a given wikiPath.
