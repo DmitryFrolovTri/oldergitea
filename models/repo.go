@@ -293,17 +293,25 @@ func updateRepoSize(e db.Engine, repo *repo_model.Repository) error {
 		return fmt.Errorf("updateSize: GetLFSMetaObjects: %v", err)
 	}
 
-	repo.Size = size + lfsSize
+	var wikiSize int64 = 0
+	if repo.HasWiki() {
+		wikiSize, err = util.GetDirectorySize(repo.WikiPath())
+		if err != nil {
+			return fmt.Errorf("updateSize: Wiki directory size: %v", err)
+		}
+	}
+
+	repo.Size = size + lfsSize + wikiSize
 	_, err = e.ID(repo.ID).Cols("size").NoAutoTime().Update(repo)
 
 	if err == nil {
-		err = updateRepoSizesForUser(e, repo.OwnerID)
+		err = UpdateRepoSizesForUser(e, repo.OwnerID)
 	}
 
 	return err
 }
 
-func updateRepoSizesForUser(e db.Engine, ownerID int64) error {
+func UpdateRepoSizesForUser(e db.Engine, ownerID int64) error {
 	user := user_model.User{ID: ownerID}
 	has, err := e.Get(&user) // это лишнее?
 	if !has {
