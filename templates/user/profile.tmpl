@@ -48,7 +48,12 @@
 								{{end}}
 							{{end}}
 							<li>{{svg "octicon-clock"}} {{.i18n.Tr "user.join_on"}} {{.Owner.CreatedUnix.FormatShort}}</li>
-							<li>{{svg "octicon-database"}} {{.Owner.SpaceUsedKb}} из {{.Owner.QuotaKb}} kb использовано</li>
+							{{if .Owner.ВПределахКвотыЛи}}
+							<li>{{svg "octicon-database"}} {{.Owner.SpaceUsedKb}} из {{.Owner.QuotaKb}} kb 
+							использовано</li>
+							{{else}}
+							TODO раскрасить это в красный цвет!{{svg "octicon-database"}} квота превышена: {{.Owner.SpaceUsedKb}} из {{.Owner.QuotaKb}}</li>
+							{{end}}
 							{{if and .Orgs .HasOrgsVisible}}
 							<li>
 								<ul class="user-orgs">
