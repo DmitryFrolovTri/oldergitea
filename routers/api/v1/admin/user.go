@@ -255,6 +255,9 @@ func EditUser(ctx *context.APIContext) {
 	if form.MaxRepoCreation != nil {
 		u.MaxRepoCreation = *form.MaxRepoCreation
 	}
+	if form.QuotaKb != nil {
+		u.QuotaKb = int64(*form.QuotaKb)
+	}
 	if form.AllowCreateOrganization != nil {
 		u.AllowCreateOrganization = *form.AllowCreateOrganization
 	}

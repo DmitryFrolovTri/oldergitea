@@ -94,6 +94,7 @@ func SettingsPost(ctx *context.Context) {
 
 	if ctx.User.IsAdmin {
 		org.MaxRepoCreation = form.MaxRepoCreation
+		org.QuotaKb = form.QuotaKb
 	}
 
 	org.FullName = form.FullName
