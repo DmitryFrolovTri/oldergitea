@@ -181,6 +181,10 @@ func (u *User) BeforeUpdate() {
 		u.MaxRepoCreation = -1
 	}
 
+	if u.QuotaKb < 0 {
+		u.QuotaKb = 0
+	}
+
 	// Organization does not need email
 	u.Email = strings.ToLower(u.Email)
 	if !u.IsOrganization() {
