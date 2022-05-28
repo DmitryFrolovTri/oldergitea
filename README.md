@@ -78,6 +78,8 @@ The `build` target is split into two sub-targets:
 
 When building from the official source tarballs which include pre-built frontend files, the `frontend` target will not be triggered, making it possible to build without Node.js and Internet connectivity.
 
+Frontend actively use cache so you should clean cache in browser to see changes in styles, img, etc.
+
 Parallelism (`make -j <num>`) is not supported.
 
 More info: https://docs.gitea.io/en-us/install-from-source/

@@ -607,6 +607,7 @@ func Auth(authMethod auth.Method) func(*Context) {
 			ctx.Data["SignedUserID"] = ctx.User.ID
 			ctx.Data["SignedUserName"] = ctx.User.Name
 			ctx.Data["IsAdmin"] = ctx.User.IsAdmin
+			ctx.Data["QuotaExceeded"] = !ctx.User.ВПределахКвотыЛи()
 		} else {
 			ctx.Data["SignedUserID"] = int64(0)
 			ctx.Data["SignedUserName"] = ""
