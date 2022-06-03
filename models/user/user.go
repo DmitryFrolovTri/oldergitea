@@ -148,7 +148,7 @@ type User struct {
 	KeepActivityPrivate bool   `xorm:"NOT NULL DEFAULT false"`
 
 	// Ограничение пространства
-	QuotaKb     int64 `xorm:"NOT NULL DEFAULT 10000"` // 0 - нет ограничений
+	QuotaKb     int64 `xorm:"NOT NULL DEFAULT 10000"`
 	SpaceUsedKb int64 `xorm:"NOT NULL DEFAULT 18"`
 }
 
@@ -258,7 +258,7 @@ func (u *User) MaxCreationLimit() int {
 
 func (u *User) ВПределахКвотыЛи() bool {
 	if u.SpaceUsedKb == 0 {
-		log.Error("ВПределахКвотыЛи(): SpaceUsedKb = 0. Пользователь не загружен?")
+		log.Error("ВПределахКвотыЛи(): SpaceUsedKb = 0. Пользователь не загружен или не владеет репозиториями")
 	}
 	return u.QuotaKb >= u.SpaceUsedKb
 }

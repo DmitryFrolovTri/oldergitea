@@ -382,6 +382,23 @@ func testAPIRepoMigrateConflict(t *testing.T, u *url.URL) {
 	})
 }
 
+func TestAPIRepoCreationQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+	onGiteaRun(t, testAPIRepoCreationQuotaFail)
+}
+
+func testAPIRepoCreationQuotaFail(t *testing.T, u *url.URL) {
+	forceChangeQuota(2, 1)
+	username := "user2"
+	baseAPITestContext := NewAPITestContext(t, username, "repo1")
+
+	u.Path = baseAPITestContext.GitPath()
+
+	baseAPITestContext.Reponame = "repo-tmp-17"
+	baseAPITestContext.ExpectedCode = http.StatusInternalServerError
+	t.Run("CreateRepo", doAPICreateRepository(baseAPITestContext, false))
+}
+
 func TestAPIOrgRepoCreate(t *testing.T) {
 	testCases := []struct {
 		ctxUserID         int64

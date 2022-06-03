@@ -241,7 +241,7 @@ func TestAPILFSBatch(t *testing.T) {
 			assert.Len(t, br.Objects, 1)
 			assert.NotNil(t, br.Objects[0].Error)
 			assert.Equal(t, http.StatusUnprocessableEntity, br.Objects[0].Error.Code)
-			assert.Equal(t, "Size must be less than or equal to 2", br.Objects[0].Error.Message)
+			assert.Equal(t, "Size must be less than or equal to 2 bytes", br.Objects[0].Error.Message)
 
 			setting.LFS.MaxFileSize = oldMaxFileSize
 		})

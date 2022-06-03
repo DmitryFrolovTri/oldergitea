@@ -78,7 +78,11 @@ type Repository struct {
 }
 
 func (r *Repository) ВПределахКвотыЛи() bool {
-	return r.Owner.ВПределахКвотыЛи()
+	if r.Owner != nil {
+		return r.Owner.ВПределахКвотыЛи()
+	} else {
+		return r.Repository.Owner.ВПределахКвотыЛи()
+	}
 }
 
 // CanEnableEditor returns true if repository is editable and user has proper access level.

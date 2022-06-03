@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"code.gitea.io/gitea/models/unittest"
+	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/ssh"
@@ -215,4 +217,14 @@ func doGitPull(dstPath string, args ...string) func(*testing.T) {
 		_, err := git.NewCommandNoGlobals(append(append(allowLFSFilters(), "pull"), args...)...).RunInDir(dstPath)
 		assert.NoError(t, err)
 	}
+}
+
+func getUsedSpaceMoreThan(t *testing.T, val int64, userId int64, details ...string) int64 {
+	used := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: userId}).(*user_model.User).SpaceUsedKb
+	otherInfo:=strings.Join(details, ", ")
+	if len(otherInfo) > 0 {
+		otherInfo = ": " + otherInfo
+	}
+	assert.True(t, used > val, fmt.Sprintf("%d should be more than %d", used, val) + otherInfo)
+	return used
 }

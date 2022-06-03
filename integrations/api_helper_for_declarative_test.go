@@ -16,6 +16,8 @@ import (
 
 	"code.gitea.io/gitea/models/perm"
 	repo_model "code.gitea.io/gitea/models/repo"
+	"code.gitea.io/gitea/models/unittest"
+	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/json"
 	"code.gitea.io/gitea/modules/queue"
 	api "code.gitea.io/gitea/modules/structs"
@@ -275,7 +277,7 @@ func doAPIMergePullRequest(ctx APITestContext, owner, repo string, index int64) 
 
 			resp = ctx.Session.MakeRequest(t, req, NoExpectedStatus)
 
-			if resp.Code != http.StatusMethodNotAllowed {
+			if resp.Code != http.StatusMethodNotAllowed|| resp.Code == ctx.ExpectedCode  {
 				break
 			}
 			err := api.APIError{}
@@ -430,4 +432,11 @@ func doAPIAddRepoToOrganizationTeam(ctx APITestContext, teamID int64, orgName, r
 		}
 		ctx.Session.MakeRequest(t, req, http.StatusNoContent)
 	}
+}
+
+func forceChangeQuota(userId int64, quota int64) {
+	e := unittest.GetXORMEngine()
+	user := new(user_model.User)
+	user.QuotaKb = quota
+	e.ID(userId).Update(user)
 }

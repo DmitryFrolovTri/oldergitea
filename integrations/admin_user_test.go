@@ -42,7 +42,7 @@ func TestAdminViewUser(t *testing.T) {
 func TestAdminEditUser(t *testing.T) {
 	defer prepareTestEnv(t)()
 
-	testSuccessfullEdit(t, user_model.User{ID: 2, Name: "newusername", LoginName: "otherlogin", Email: "new@e-mail.gitea"})
+	testSuccessfullEdit(t, user_model.User{ID: 2, Name: "newusername", LoginName: "otherlogin", Email: "new@e-mail.gitea", QuotaKb: 1234})
 }
 
 func testSuccessfullEdit(t *testing.T, formData user_model.User) {
@@ -58,6 +58,7 @@ func makeRequest(t *testing.T, formData user_model.User, headerCode int) {
 		"login_name": formData.LoginName,
 		"login_type": "0-0",
 		"email":      formData.Email,
+		"quota_kb":   strconv.FormatInt(formData.QuotaKb, 10),
 	})
 
 	session.MakeRequest(t, req, headerCode)
@@ -65,6 +66,7 @@ func makeRequest(t *testing.T, formData user_model.User, headerCode int) {
 	assert.Equal(t, formData.Name, user.Name)
 	assert.Equal(t, formData.LoginName, user.LoginName)
 	assert.Equal(t, formData.Email, user.Email)
+	assert.Equal(t, formData.QuotaKb, user.QuotaKb)
 }
 
 func TestAdminDeleteUser(t *testing.T) {
