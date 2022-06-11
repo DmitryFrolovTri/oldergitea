@@ -117,6 +117,14 @@ func CheckCreateRepository(doer, u *user_model.User, name string, overwriteOrAdo
 		return ErrRepoAlreadyExist{u.Name, name}
 	}
 
+	if !doer.ВПределахКвотыЛи() {
+		return fmt.Errorf("пользователь, выполняющий действие, вне пределов квоты")
+	}
+
+	if !u.ВПределахКвотыЛи() {
+		return fmt.Errorf("владелец создаваемого репозитория - вне пределов квоты")
+	}
+
 	repoPath := RepoPath(u.Name, name)
 	isExist, err := util.IsExist(repoPath)
 	if err != nil {

@@ -82,6 +82,11 @@ func Migrate(ctx *context.APIContext) {
 		return
 	}
 
+	if !repoOwner.ВПределахКвотыЛи() {
+		ctx.Error(http.StatusForbidden, "", "пользователь вне пределов квоты")
+		return
+	}
+
 	if !ctx.User.IsAdmin {
 		if !repoOwner.IsOrganization() && ctx.User.ID != repoOwner.ID {
 			ctx.Error(http.StatusForbidden, "", "Given user is not an organization.")
