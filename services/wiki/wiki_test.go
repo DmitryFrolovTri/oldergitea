@@ -127,8 +127,8 @@ func TestRepository_AddWikiPage(t *testing.T) {
 	assert.NoError(t, unittest.PrepareTestDatabase())
 	const wikiContent = "This is the wiki content"
 	const commitMsg = "Commit message"
-	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1}).(*repo_model.Repository)
 	doer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}).(*user_model.User)
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1, OwnerID: 2, Owner: doer}).(*repo_model.Repository)
 	for _, wikiName := range []string{
 		"Another page",
 		"Here's a <tag> and a/slash",
@@ -172,8 +172,8 @@ func TestRepository_EditWikiPage(t *testing.T) {
 
 	const newWikiContent = "This is the new content"
 	const commitMsg = "Commit message"
-	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1}).(*repo_model.Repository)
 	doer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}).(*user_model.User)
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1, OwnerID: 2, Owner: doer}).(*repo_model.Repository)
 	for _, newWikiName := range []string{
 		"Home", // same name as before
 		"New home",
@@ -202,8 +202,8 @@ func TestRepository_EditWikiPage(t *testing.T) {
 
 func TestRepository_DeleteWikiPage(t *testing.T) {
 	unittest.PrepareTestEnv(t)
-	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1}).(*repo_model.Repository)
 	doer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}).(*user_model.User)
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1, OwnerID: 2, Owner: doer}).(*repo_model.Repository)
 	assert.NoError(t, DeleteWikiPage(doer, repo, "Home"))
 
 	// Now need to show that the page has been added:
@@ -219,7 +219,8 @@ func TestRepository_DeleteWikiPage(t *testing.T) {
 
 func TestPrepareWikiFileName(t *testing.T) {
 	unittest.PrepareTestEnv(t)
-	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1}).(*repo_model.Repository)
+	doer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}).(*user_model.User)
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1, OwnerID: 2, Owner: doer}).(*repo_model.Repository)
 	gitRepo, err := git.OpenRepository(repo.WikiPath())
 	defer gitRepo.Close()
 	assert.NoError(t, err)
