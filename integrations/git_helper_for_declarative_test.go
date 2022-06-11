@@ -28,6 +28,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var defaultSpaceUsedKb int64 = 18
+
 func withKeyFile(t *testing.T, keyname string, callback func(string)) {
 
 	tmpDir, err := os.MkdirTemp("", "key-file")

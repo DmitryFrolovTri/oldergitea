@@ -32,6 +32,7 @@ func TestAPIRepoLFSMigrateLocal(t *testing.T) {
 	session := loginUser(t, user.Name)
 	token := getTokenForLoggedInUser(t, session)
 
+	usedSpace := getUsedSpaceMoreThan(t, 0, 1)
 	req := NewRequestWithJSON(t, "POST", "/api/v1/repos/migrate?token="+token, &api.MigrateRepoOptions{
 		CloneAddr:   path.Join(setting.RepoRootPath, "migration/lfs-test.git"),
 		RepoOwnerID: user.ID,
@@ -40,6 +41,7 @@ func TestAPIRepoLFSMigrateLocal(t *testing.T) {
 	})
 	resp := MakeRequest(t, req, NoExpectedStatus)
 	assert.EqualValues(t, http.StatusCreated, resp.Code)
+	getUsedSpaceMoreThan(t, usedSpace+defaultSpaceUsedKb, 1)
 
 	store := lfs.NewContentStore()
 	ok, _ := store.Verify(lfs.Pointer{Oid: "fb8f7d8435968c4f82a726a92395be4d16f2f63116caf36c8ad35c60831ab041", Size: 6})
@@ -50,4 +52,26 @@ func TestAPIRepoLFSMigrateLocal(t *testing.T) {
 	setting.ImportLocalPaths = oldImportLocalPaths
 	setting.Migrations.AllowLocalNetworks = oldAllowLocalNetworks
 	assert.NoError(t, migrations.Init()) // reset old migration settings
+}
+
+func TestAPIRepoLFSMigrateLocalQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+
+	setting.ImportLocalPaths = true
+	setting.Migrations.AllowLocalNetworks = true
+	assert.NoError(t, migrations.Init())
+
+	user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1}).(*user_model.User)
+	session := loginUser(t, user.Name)
+	token := getTokenForLoggedInUser(t, session)
+
+	forceChangeQuota(1, 1)
+	req := NewRequestWithJSON(t, "POST", "/api/v1/repos/migrate?token="+token, &api.MigrateRepoOptions{
+		CloneAddr:   path.Join(setting.RepoRootPath, "migration/lfs-test.git"),
+		RepoOwnerID: user.ID,
+		RepoName:    "lfs-test-local",
+		LFS:         true,
+	})
+	resp := MakeRequest(t, req, NoExpectedStatus)
+	assert.EqualValues(t, http.StatusForbidden, resp.Code)
 }

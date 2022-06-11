@@ -66,7 +66,7 @@ func testGit(t *testing.T, u *url.URL) {
 		t.Run("ForkFromDifferentUser", doAPIForkRepository(httpContext, forkedUserCtx.Username))
 		t.Run("ForkQuotaCheck", func(t *testing.T) {
 			defer PrintCurrentTest(t)()
-			usedSpace = getUsedSpaceMoreThan(t, usedSpace+18, 2) // default value
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace+defaultSpaceUsedKb, 2)
 		})
 
 		u.Path = httpContext.GitPath()
@@ -183,9 +183,12 @@ func testGitQuotaFail(t *testing.T, u *url.URL) {
 
 		t.Run("CreateRepoInDifferentUser", doAPICreateRepository(forkedUserCtx, false))
 		t.Run("AddUserAsCollaborator", doAPIAddCollaborator(forkedUserCtx, httpContext.Username, perm.AccessModeRead))
-		// httpContext.ExpectedCode = http.StatusTeapot
+		httpContext.ExpectedCode = http.StatusInternalServerError
 		t.Run("ForkFromDifferentUser", doAPIForkRepository(httpContext, forkedUserCtx.Username))
-		// httpContext.ExpectedCode = 0
+		httpContext.ExpectedCode = 0
+		forceChangeQuota(2, 1000000000)
+		t.Run("ForkFromDifferentUser", doAPIForkRepository(httpContext, forkedUserCtx.Username))
+		forceChangeQuota(2, 1)
 
 		u.Path = httpContext.GitPath()
 		u.User = url.UserPassword(username, userPassword)
