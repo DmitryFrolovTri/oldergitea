@@ -100,6 +100,21 @@ func (err ErrRepoFilesAlreadyExist) Error() string {
 	return fmt.Sprintf("repository files already exist [uname: %s, name: %s]", err.Uname, err.Name)
 }
 
+// ErrКвотаПревышена возвращается при переполнении квоты
+type ErrКвотаПревышена struct {
+	Кто string
+}
+
+// IsErrКвотаПревышена checks if an error is a ErrКвотаПревышена.
+func IsErrКвотаПревышена(err error) bool {
+	_, ok := err.(ErrКвотаПревышена)
+	return ok
+}
+
+func (err ErrКвотаПревышена) Error() string {
+	return "пользователь или деятель - за пределеами квоты"
+}
+
 // CheckCreateRepository check if could created a repository
 func CheckCreateRepository(doer, u *user_model.User, name string, overwriteOrAdopt bool) error {
 	if !doer.CanCreateRepo() {
@@ -118,11 +133,11 @@ func CheckCreateRepository(doer, u *user_model.User, name string, overwriteOrAdo
 	}
 
 	if !doer.ВПределахКвотыЛи() {
-		return fmt.Errorf("пользователь, выполняющий действие, вне пределов квоты")
+		return ErrКвотаПревышена{"пользователь"}
 	}
 
 	if !u.ВПределахКвотыЛи() {
-		return fmt.Errorf("владелец создаваемого репозитория - вне пределов квоты")
+		return ErrКвотаПревышена{"владелец"}
 	}
 
 	repoPath := RepoPath(u.Name, name)

@@ -80,6 +80,8 @@ func handleMigrateError(ctx *context.Context, owner *user_model.User, err error,
 		ctx.RenderWithErr(ctx.Tr("form.visit_rate_limit"), tpl, form)
 	case migrations.IsTwoFactorAuthError(err):
 		ctx.RenderWithErr(ctx.Tr("form.2fa_auth_required"), tpl, form)
+	case repo_model.IsErrКвотаПревышена(err):
+		ctx.RenderWithErr("Квота превышена", tpl, form)
 	case repo_model.IsErrReachLimitOfRepo(err):
 		maxCreationLimit := owner.MaxCreationLimit()
 		msg := ctx.TrN(maxCreationLimit, "repo.form.reach_limit_of_creation_1", "repo.form.reach_limit_of_creation_n", maxCreationLimit)
