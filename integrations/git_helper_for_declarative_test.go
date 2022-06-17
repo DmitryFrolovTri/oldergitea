@@ -223,10 +223,20 @@ func doGitPull(dstPath string, args ...string) func(*testing.T) {
 
 func getUsedSpaceMoreThan(t *testing.T, val int64, userId int64, details ...string) int64 {
 	used := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: userId}).(*user_model.User).SpaceUsedKb
-	otherInfo:=strings.Join(details, ", ")
+	otherInfo := strings.Join(details, ", ")
 	if len(otherInfo) > 0 {
 		otherInfo = ": " + otherInfo
 	}
-	assert.True(t, used > val, fmt.Sprintf("%d should be more than %d", used, val) + otherInfo)
+	assert.True(t, used > val, fmt.Sprintf("%d should be more than %d", used, val)+otherInfo)
+	return used
+}
+
+func getUsedSpaceLessThan(t *testing.T, val int64, userId int64, details ...string) int64 {
+	used := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: userId}).(*user_model.User).SpaceUsedKb
+	otherInfo := strings.Join(details, ", ")
+	if len(otherInfo) > 0 {
+		otherInfo = ": " + otherInfo
+	}
+	assert.True(t, used < val, fmt.Sprintf("%d should be less than %d", used, val)+otherInfo)
 	return used
 }

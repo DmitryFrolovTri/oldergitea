@@ -426,6 +426,24 @@ func testAPIRepoCreationQuotaFail(t *testing.T, u *url.URL) {
 	t.Run("CreateRepo", doAPICreateRepository(baseAPITestContext, false))
 }
 
+func TestAPIRepoDeletionQuota(t *testing.T) {
+	defer prepareTestEnv(t)()
+	onGiteaRun(t, testAPIRepoCreationQuotaFail)
+}
+
+func testAPIRepoDeletionQuota(t *testing.T, u *url.URL) {
+	username := "user2"
+	baseAPITestContext := NewAPITestContext(t, username, "repo1")
+
+	u.Path = baseAPITestContext.GitPath()
+
+	baseAPITestContext.Reponame = "repo-tmp-17"
+	t.Run("CreateRepo", doAPICreateRepository(baseAPITestContext, false))
+	usedSpace := getUsedSpaceMoreThan(t, defaultSpaceUsedKb, 2)
+	t.Run("DeleteRepo", doAPIDeleteRepository(baseAPITestContext))
+	getUsedSpaceLessThan(t, usedSpace, 2)
+}
+
 func TestAPIOrgRepoCreate(t *testing.T) {
 	testCases := []struct {
 		ctxUserID         int64
