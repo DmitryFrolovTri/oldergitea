@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // EnsureAbsolutePath ensure that a path is absolute, making it
@@ -172,4 +173,36 @@ func FileURLToPath(u *url.URL) (string, error) {
 		return path[1:], nil
 	}
 	return path, nil
+}
+
+type WatcherData struct {
+	Run bool
+	Err error
+}
+
+func WatchDirSizeLimit(watcher *WatcherData, dirPath string, maxSizeKb int64, onFailError error, kill func() error) {
+	for {
+		if !watcher.Run {
+			watcher.Err = nil
+			break
+		}
+
+		time.Sleep(15 * time.Second)
+
+		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+			continue
+		}
+
+		usedSpace, err := GetDirectorySize(dirPath)
+		if err != nil {
+			watcher.Err = err
+			break
+		}
+
+		if usedSpace/1024 > maxSizeKb {
+			watcher.Err = onFailError
+			kill()
+			break
+		}
+	}
 }

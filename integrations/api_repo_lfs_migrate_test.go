@@ -14,6 +14,7 @@ import (
 	"code.gitea.io/gitea/modules/lfs"
 	"code.gitea.io/gitea/modules/setting"
 	api "code.gitea.io/gitea/modules/structs"
+	"code.gitea.io/gitea/modules/util"
 	"code.gitea.io/gitea/services/migrations"
 
 	"github.com/stretchr/testify/assert"
@@ -64,14 +65,28 @@ func TestAPIRepoLFSMigrateLocalQuotaFail(t *testing.T) {
 	user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1}).(*user_model.User)
 	session := loginUser(t, user.Name)
 	token := getTokenForLoggedInUser(t, session)
+	gitSize, err := util.GetDirectorySize(path.Join(setting.RepoRootPath, "migration/lfs-test.git"))
+	assert.NoError(t, err)
+	lfsObjSize, err := util.GetDirectorySize(path.Join(setting.RepoRootPath, "migration/lfs-test.git/"))
+	assert.NoError(t, err)
 
-	forceChangeQuota(1, 1)
-	req := NewRequestWithJSON(t, "POST", "/api/v1/repos/migrate?token="+token, &api.MigrateRepoOptions{
-		CloneAddr:   path.Join(setting.RepoRootPath, "migration/lfs-test.git"),
-		RepoOwnerID: user.ID,
-		RepoName:    "lfs-test-local",
-		LFS:         true,
-	})
-	resp := MakeRequest(t, req, NoExpectedStatus)
-	assert.EqualValues(t, http.StatusForbidden, resp.Code)
+	testCases := []struct {
+		repoName       string
+		expectedStatus int
+		quota          int64
+	}{
+		{repoName: "lfs-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: gitSize + defaultSpaceUsedKb - lfsObjSize + 1},
+		{repoName: "lfs-quota-fail-on-start", expectedStatus: http.StatusForbidden, quota: 1},
+	}
+
+	for _, testCase := range testCases {
+		forceChangeQuota(1, testCase.quota)
+		req := NewRequestWithJSON(t, "POST", "/api/v1/repos/migrate?token="+token, &api.MigrateRepoOptions{
+			CloneAddr:   path.Join(setting.RepoRootPath, "migration/lfs-test.git"),
+			RepoOwnerID: user.ID,
+			RepoName:    testCase.repoName,
+			LFS:         true,
+		})
+		MakeRequest(t, req, testCase.expectedStatus)
+	}
 }

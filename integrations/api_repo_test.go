@@ -344,6 +344,33 @@ func TestAPIRepoMigrate(t *testing.T) {
 	}
 }
 
+func TestAPIRepoMigrateQuotaFail(t *testing.T) {
+	usedSpace := getUsedSpaceMoreThan(t, 0, 2)
+	testCases := []struct {
+		ctxUserID, userID  int64
+		cloneURL, repoName string
+		expectedStatus     int
+		quota              int64
+	}{
+		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: usedSpace + defaultSpaceUsedKb + 1},
+		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-on-start", expectedStatus: http.StatusForbidden, quota: 1},
+	}
+
+	defer prepareTestEnv(t)()
+	for _, testCase := range testCases {
+		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: testCase.ctxUserID}).(*user_model.User)
+		session := loginUser(t, user.Name)
+		token := getTokenForLoggedInUser(t, session)
+		forceChangeQuota(2, testCase.quota)
+		req := NewRequestWithJSON(t, "POST", "/api/v1/repos/migrate?token="+token, &api.MigrateRepoOptions{
+			CloneAddr:   testCase.cloneURL,
+			RepoOwnerID: testCase.userID,
+			RepoName:    testCase.repoName,
+		})
+		MakeRequest(t, req, testCase.expectedStatus)
+	}
+}
+
 func TestAPIRepoMigrateConflict(t *testing.T) {
 	onGiteaRun(t, testAPIRepoMigrateConflict)
 }

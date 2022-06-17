@@ -71,13 +71,39 @@ func MigrateRepositoryGitData(ctx context.Context, u *user_model.User,
 		return repo, fmt.Errorf("Failed to remove %s: %v", repoPath, err)
 	}
 
+	if repo.OwnerID == u.ID {
+		repo.Owner = u
+	}
+
+	mainWatcher := util.WatcherData{Run: true, Err: nil}
+	remainedSpaceKb, err := repo.GetRemainedSpaceKb(ctx)
+	if err != nil {
+		return repo, fmt.Errorf("Failed to get remained space %s: %v", repoPath, err)
+	}
+
 	if err = git.CloneWithContext(ctx, opts.CloneAddr, repoPath, git.CloneRepoOptions{
 		Mirror:        true,
 		Quiet:         true,
 		Timeout:       migrateTimeout,
 		SkipTLSVerify: setting.Migrations.SkipTLSVerify,
+		KillerFunc: func(kill func() error) {
+			go util.WatchDirSizeLimit(&mainWatcher, repoPath, remainedSpaceKb, repo_model.ErrКвотаПревышена{"владелец"}, kill)
+		},
 	}); err != nil {
+		mainWatcher.Run = false
+		if mainWatcher.Err != nil {
+			return repo, mainWatcher.Err
+		}
 		return repo, fmt.Errorf("Clone: %v", err)
+	}
+	mainWatcher.Run = false
+	if mainWatcher.Err != nil {
+		return repo, mainWatcher.Err
+	}
+	if repoDirSize, err := util.GetDirectorySize(repoPath); err != nil {
+		return repo, fmt.Errorf("Clone - check size: %v", err)
+	} else {
+		remainedSpaceKb -= repoDirSize / 1024
 	}
 
 	if opts.Wiki {
@@ -87,24 +113,36 @@ func MigrateRepositoryGitData(ctx context.Context, u *user_model.User,
 			if err := util.RemoveAll(wikiPath); err != nil {
 				return repo, fmt.Errorf("Failed to remove %s: %v", wikiPath, err)
 			}
-
+			wikiWatcher := util.WatcherData{Run: true, Err: nil}
 			if err = git.CloneWithContext(ctx, wikiRemotePath, wikiPath, git.CloneRepoOptions{
 				Mirror:        true,
 				Quiet:         true,
 				Timeout:       migrateTimeout,
 				Branch:        "master",
 				SkipTLSVerify: setting.Migrations.SkipTLSVerify,
+				KillerFunc: func(kill func() error) {
+					go util.WatchDirSizeLimit(&wikiWatcher, wikiPath, remainedSpaceKb, repo_model.ErrКвотаПревышена{"владелец"}, kill)
+				},
 			}); err != nil {
+				wikiWatcher.Run = false
 				log.Warn("Clone wiki: %v", err)
 				if err := util.RemoveAll(wikiPath); err != nil {
 					return repo, fmt.Errorf("Failed to remove %s: %v", wikiPath, err)
 				}
+				if wikiWatcher.Err != nil {
+					return repo, wikiWatcher.Err
+				}
+			}
+			wikiWatcher.Run = false
+			if wikiWatcher.Err != nil {
+				return repo, wikiWatcher.Err
+			}
+			if repoDirSize, err := util.GetDirectorySize(wikiPath); err != nil {
+				return repo, fmt.Errorf("Clone wiki - check size: %v", err)
+			} else {
+				remainedSpaceKb -= repoDirSize / 1024
 			}
 		}
-	}
-
-	if repo.OwnerID == u.ID {
-		repo.Owner = u
 	}
 
 	if err = models.CheckDaemonExportOK(ctx, repo); err != nil {
@@ -150,8 +188,11 @@ func MigrateRepositoryGitData(ctx context.Context, u *user_model.User,
 		if opts.LFS {
 			endpoint := lfs.DetermineEndpoint(opts.CloneAddr, opts.LFSEndpoint)
 			lfsClient := lfs.NewClient(endpoint, httpTransport)
-			if err = StoreMissingLfsObjectsInRepository(ctx, repo, gitRepo, lfsClient); err != nil {
+			if err = StoreMissingLfsObjectsInRepository(ctx, repo, gitRepo, lfsClient, remainedSpaceKb); err != nil {
 				log.Error("Failed to store missing LFS objects for repository: %v", err)
+				if repo_model.IsErrКвотаПревышена(err) {
+					return repo, err
+				}
 			}
 		}
 	}
@@ -344,7 +385,7 @@ func PushUpdateAddTag(repo *repo_model.Repository, gitRepo *git.Repository, tagN
 }
 
 // StoreMissingLfsObjectsInRepository downloads missing LFS objects
-func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Repository, gitRepo *git.Repository, lfsClient lfs.Client) error {
+func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Repository, gitRepo *git.Repository, lfsClient lfs.Client, remainedSpaceKb int64) error {
 	contentStore := lfs.NewContentStore()
 
 	pointerChan := make(chan lfs.PointerBlob)
@@ -358,6 +399,11 @@ func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Re
 			}
 
 			defer content.Close()
+
+			remainedSpaceKb -= p.Size / 1024
+			if remainedSpaceKb <= 0 {
+				return repo_model.ErrКвотаПревышена{"владелец"}
+			}
 
 			_, err := models.NewLFSMetaObject(&models.LFSMetaObject{Pointer: p, RepositoryID: repo.ID})
 			if err != nil {
