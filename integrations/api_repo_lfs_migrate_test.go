@@ -67,7 +67,7 @@ func TestAPIRepoLFSMigrateLocalQuotaFail(t *testing.T) {
 	token := getTokenForLoggedInUser(t, session)
 	gitSize, err := util.GetDirectorySize(path.Join(setting.RepoRootPath, "migration/lfs-test.git"))
 	assert.NoError(t, err)
-	lfsObjSize, err := util.GetDirectorySize(path.Join(setting.RepoRootPath, "migration/lfs-test.git/"))
+	lfsObjSize, err := util.GetDirectorySize(path.Join(setting.RepoRootPath, "migration/lfs-test.git/lfs"))
 	assert.NoError(t, err)
 
 	testCases := []struct {
@@ -75,8 +75,8 @@ func TestAPIRepoLFSMigrateLocalQuotaFail(t *testing.T) {
 		expectedStatus int
 		quota          int64
 	}{
-		{repoName: "lfs-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: gitSize + defaultSpaceUsedKb - lfsObjSize + 1},
 		{repoName: "lfs-quota-fail-on-start", expectedStatus: http.StatusForbidden, quota: 1},
+		{repoName: "lfs-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: (gitSize-lfsObjSize)/1024 + defaultSpaceUsedKb + 1},
 	}
 
 	for _, testCase := range testCases {
