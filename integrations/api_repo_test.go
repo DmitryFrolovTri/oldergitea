@@ -301,21 +301,38 @@ func TestAPIGetRepoByIDUnauthorized(t *testing.T) {
 	session.MakeRequest(t, req, http.StatusNotFound)
 }
 
-func TestAPIRepoMigrate(t *testing.T) {
-	testCases := []struct {
-		ctxUserID, userID  int64
-		cloneURL, repoName string
-		expectedStatus     int
-	}{
+type MigrateTestCase struct {
+	ctxUserID, userID  int64
+	cloneURL, repoName string
+	expectedStatus     int
+}
+
+func TestAPIRepoMigrateMain(t *testing.T) {
+	testCases := []MigrateTestCase{
 		{ctxUserID: 1, userID: 2, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-admin", expectedStatus: http.StatusCreated},
 		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-own", expectedStatus: http.StatusCreated},
 		{ctxUserID: 2, userID: 1, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-bad", expectedStatus: http.StatusForbidden},
+	}
+	testMigrate(t, testCases)
+}
+
+func TestAPIRepoMigrateOrg(t *testing.T) {
+	testCases := []MigrateTestCase{
 		{ctxUserID: 2, userID: 3, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-org", expectedStatus: http.StatusCreated},
 		{ctxUserID: 2, userID: 6, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-bad-org", expectedStatus: http.StatusForbidden},
+	}
+	testMigrate(t, testCases)
+}
+
+func TestAPIRepoMigratePrivate(t *testing.T) {
+	testCases := []MigrateTestCase{
 		{ctxUserID: 2, userID: 3, cloneURL: "https://localhost:3000/user/test_repo.git", repoName: "private-ip", expectedStatus: http.StatusUnprocessableEntity},
 		{ctxUserID: 2, userID: 3, cloneURL: "https://10.0.0.1/user/test_repo.git", repoName: "private-ip", expectedStatus: http.StatusUnprocessableEntity},
 	}
+	testMigrate(t, testCases)
+}
 
+func testMigrate(t *testing.T, testCases []MigrateTestCase) {
 	defer prepareTestEnv(t)()
 	for _, testCase := range testCases {
 		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: testCase.ctxUserID}).(*user_model.User)

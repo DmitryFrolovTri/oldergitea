@@ -400,11 +400,6 @@ func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Re
 
 			defer content.Close()
 
-			remainedSpaceKb -= p.Size / 1024
-			if remainedSpaceKb <= 0 {
-				return repo_model.ErrКвотаПревышена{"владелец"}
-			}
-
 			_, err := models.NewLFSMetaObject(&models.LFSMetaObject{Pointer: p, RepositoryID: repo.ID})
 			if err != nil {
 				log.Error("Repo[%-v]: Error creating LFS meta object %-v: %v", repo, p, err)
@@ -449,6 +444,11 @@ func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Re
 		if err != nil {
 			log.Error("Repo[%-v]: Error checking if LFS object %-v exists: %v", repo, pointerBlob.Pointer, err)
 			return err
+		}
+
+		remainedSpaceKb -= pointerBlob.Size / 1024
+		if remainedSpaceKb <= 0 {
+			return repo_model.ErrКвотаПревышена{"владелец"}
 		}
 
 		if exist {
