@@ -58,6 +58,8 @@ func TestAPIRepoLFSMigrateLocal(t *testing.T) {
 func TestAPIRepoLFSMigrateLocalQuotaFail(t *testing.T) {
 	defer prepareTestEnv(t)()
 
+	oldImportLocalPaths := setting.ImportLocalPaths
+	oldAllowLocalNetworks := setting.Migrations.AllowLocalNetworks
 	setting.ImportLocalPaths = true
 	setting.Migrations.AllowLocalNetworks = true
 	assert.NoError(t, migrations.Init())
@@ -89,4 +91,8 @@ func TestAPIRepoLFSMigrateLocalQuotaFail(t *testing.T) {
 		})
 		MakeRequest(t, req, testCase.expectedStatus)
 	}
+
+	setting.ImportLocalPaths = oldImportLocalPaths
+	setting.Migrations.AllowLocalNetworks = oldAllowLocalNetworks
+	assert.NoError(t, migrations.Init()) // reset old migration settings
 }

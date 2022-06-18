@@ -369,8 +369,8 @@ func TestAPIRepoMigrateQuotaFail(t *testing.T) {
 		expectedStatus     int
 		quota              int64
 	}{
-		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: usedSpace + defaultSpaceUsedKb + 1},
 		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-on-start", expectedStatus: http.StatusForbidden, quota: 1},
+		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: usedSpace + defaultSpaceUsedKb + 1},
 	}
 
 	defer prepareTestEnv(t)()
