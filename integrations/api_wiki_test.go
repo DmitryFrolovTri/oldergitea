@@ -181,20 +181,22 @@ func TestAPINewWikiPage(t *testing.T) {
 	session := loginUser(t, username)
 	token := getTokenForLoggedInUser(t, session)
 
-	urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/wiki/new?token=%s", username, "repo1", token)
-
 	for _, title := range []string{
 		"New page",
 		"&&&&",
 	} {
-		req := NewRequestWithJSON(t, "POST", urlStr, &api.CreateWikiPageOptions{
-			Title:         title,
-			ContentBase64: base64.StdEncoding.EncodeToString([]byte("Wiki page content for API unit tests")),
-			Message:       "",
-		})
-		session.MakeRequest(t, req, http.StatusCreated)
+		createWikiPage(t, session, token, username, "repo1", title, http.StatusCreated)
 		usedSpace = getUsedSpaceMoreThan(t, usedSpace, 2, "for "+title)
 	}
+}
+
+func createWikiPage(t *testing.T, session *TestSession, token string, username string, repo string, title string, expectedStatus int) {
+	req := NewRequestWithJSON(t, "POST", fmt.Sprintf("/api/v1/repos/%s/%s/wiki/new?token=%s", username, "repo1", token), &api.CreateWikiPageOptions{
+		Title:         title,
+		ContentBase64: base64.StdEncoding.EncodeToString([]byte("Wiki page content for API unit tests")),
+		Message:       "",
+	})
+	session.MakeRequest(t, req, expectedStatus)
 }
 
 func TestAPINewWikiPageQuotaFail(t *testing.T) {
@@ -204,14 +206,8 @@ func TestAPINewWikiPageQuotaFail(t *testing.T) {
 	username := "user2"
 	session := loginUser(t, username)
 	token := getTokenForLoggedInUser(t, session)
-	urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/wiki/new?token=%s", username, "repo1", token)
 
-	req := NewRequestWithJSON(t, "POST", urlStr, &api.CreateWikiPageOptions{
-		Title:         "newwiki",
-		ContentBase64: base64.StdEncoding.EncodeToString([]byte("Wiki page content for API unit tests")),
-		Message:       "",
-	})
-	session.MakeRequest(t, req, http.StatusInternalServerError)
+	createWikiPage(t, session, token, username, "repo1", "newwiki", http.StatusInternalServerError)
 }
 
 func TestAPIEditWikiPage(t *testing.T) {

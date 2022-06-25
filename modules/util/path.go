@@ -187,7 +187,7 @@ func WatchDirSizeLimit(watcher *WatcherData, dirPath string, maxSizeKb int64, on
 			break
 		}
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(50 * time.Millisecond)
 
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 			continue
@@ -196,6 +196,7 @@ func WatchDirSizeLimit(watcher *WatcherData, dirPath string, maxSizeKb int64, on
 		usedSpace, err := GetDirectorySize(dirPath)
 		if err != nil {
 			watcher.Err = err
+			kill()
 			break
 		}
 

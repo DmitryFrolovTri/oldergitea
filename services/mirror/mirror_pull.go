@@ -183,6 +183,12 @@ func pruneBrokenReferences(ctx context.Context,
 
 // runSync returns true if sync finished without error.
 func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bool) {
+	defer func() {
+		if err := models.UpdateRepoSize(db.DefaultContext, m.Repo); err != nil {
+			log.Error("SyncMirrors [repo: %-v]: failed to update size for mirror repository on finish: %v", m.Repo, err)
+		}
+	}()
+
 	repoPath := m.Repo.RepoPath()
 	wikiPath := m.Repo.WikiPath()
 	timeout := time.Duration(setting.Git.Timeout.Mirror) * time.Second
