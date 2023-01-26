@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func testRepoMigrate(t testing.TB, session *TestSession, cloneAddr, repoName string) *httptest.ResponseRecorder {
+func testRepoMigrate(t testing.TB, session *TestSession, cloneAddr, repoName string, expectedStatus int) *httptest.ResponseRecorder {
 	req := NewRequest(t, "GET", fmt.Sprintf("/repo/migrate?service_type=%d", structs.PlainGitService)) // render plain git migration page
 	resp := session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc := NewHTMLParser(t, resp.Body)
@@ -33,7 +33,7 @@ func testRepoMigrate(t testing.TB, session *TestSession, cloneAddr, repoName str
 		"repo_name":  repoName,
 		"service":    fmt.Sprintf("%d", structs.PlainGitService),
 	})
-	resp = session.MakeRequest(t, req, http.StatusFound)
+	resp = session.MakeRequest(t, req, expectedStatus)
 
 	return resp
 }
@@ -41,5 +41,14 @@ func testRepoMigrate(t testing.TB, session *TestSession, cloneAddr, repoName str
 func TestRepoMigrate(t *testing.T) {
 	defer prepareTestEnv(t)()
 	session := loginUser(t, "user2")
-	testRepoMigrate(t, session, "https://github.com/go-gitea/test_repo.git", "git")
+	usedSpace:= getUsedSpaceMoreThan(t, 0, 2)
+	testRepoMigrate(t, session, "https://github.com/go-gitea/test_repo.git", "git", http.StatusFound)
+	getUsedSpaceMoreThan(t, usedSpace + defaultSpaceUsedKb, 2)
+}
+
+func TestRepoMigrateQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+	session := loginUser(t, "user2")
+	forceChangeQuota(2, 1)
+	testRepoMigrate(t, session, "https://github.com/go-gitea/test_repo.git", "git", http.StatusOK)
 }

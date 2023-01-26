@@ -83,6 +83,10 @@ func NewNilResponseHashSumRecorder() *NilResponseHashSumRecorder {
 
 func TestMain(m *testing.M) {
 	defer log.Close()
+// 	process_id := os.Getpid()
+// 	fmt.Println("Process Id is", process_id)
+// 	var name string
+// 	fmt.Scanf("%s", &name)
 
 	managerCtx, cancel := context.WithCancel(context.Background())
 	graceful.InitManager(managerCtx)

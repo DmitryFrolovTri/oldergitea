@@ -174,24 +174,40 @@ func TestAPIListWikiPages(t *testing.T) {
 }
 
 func TestAPINewWikiPage(t *testing.T) {
+	defer prepareTestEnv(t)()
+
+	usedSpace := getUsedSpaceMoreThan(t, 0, 2)
+	username := "user2"
+	session := loginUser(t, username)
+	token := getTokenForLoggedInUser(t, session)
+
 	for _, title := range []string{
 		"New page",
 		"&&&&",
 	} {
-		defer prepareTestEnv(t)()
-		username := "user2"
-		session := loginUser(t, username)
-		token := getTokenForLoggedInUser(t, session)
-
-		urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/wiki/new?token=%s", username, "repo1", token)
-
-		req := NewRequestWithJSON(t, "POST", urlStr, &api.CreateWikiPageOptions{
-			Title:         title,
-			ContentBase64: base64.StdEncoding.EncodeToString([]byte("Wiki page content for API unit tests")),
-			Message:       "",
-		})
-		session.MakeRequest(t, req, http.StatusCreated)
+		createWikiPage(t, session, token, username, "repo1", title, http.StatusCreated)
+		usedSpace = getUsedSpaceMoreThan(t, usedSpace, 2, "for "+title)
 	}
+}
+
+func createWikiPage(t *testing.T, session *TestSession, token string, username string, repo string, title string, expectedStatus int) {
+	req := NewRequestWithJSON(t, "POST", fmt.Sprintf("/api/v1/repos/%s/%s/wiki/new?token=%s", username, "repo1", token), &api.CreateWikiPageOptions{
+		Title:         title,
+		ContentBase64: base64.StdEncoding.EncodeToString([]byte("Wiki page content for API unit tests")),
+		Message:       "",
+	})
+	session.MakeRequest(t, req, expectedStatus)
+}
+
+func TestAPINewWikiPageQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+	forceChangeQuota(2, 1)
+
+	username := "user2"
+	session := loginUser(t, username)
+	token := getTokenForLoggedInUser(t, session)
+
+	createWikiPage(t, session, token, username, "repo1", "newwiki", http.StatusInternalServerError)
 }
 
 func TestAPIEditWikiPage(t *testing.T) {
@@ -199,15 +215,33 @@ func TestAPIEditWikiPage(t *testing.T) {
 	username := "user2"
 	session := loginUser(t, username)
 	token := getTokenForLoggedInUser(t, session)
-
+	usedSpace := getUsedSpaceMoreThan(t, 0, 2)
 	urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/wiki/page/Page-With-Spaced-Name?token=%s", username, "repo1", token)
 
 	req := NewRequestWithJSON(t, "PATCH", urlStr, &api.CreateWikiPageOptions{
 		Title:         "edited title",
-		ContentBase64: base64.StdEncoding.EncodeToString([]byte("Edited wiki page content for API unit tests")),
+		ContentBase64: base64.StdEncoding.EncodeToString([]byte("Edited wiki page content for API unit tests with more content")),
 		Message:       "",
 	})
 	session.MakeRequest(t, req, http.StatusOK)
+	getUsedSpaceMoreThan(t, usedSpace, 2)
+}
+
+func TestAPIEditWikiPageQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+	forceChangeQuota(2, 1)
+
+	username := "user2"
+	session := loginUser(t, username)
+	token := getTokenForLoggedInUser(t, session)
+	urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/wiki/page/Page-With-Spaced-Name?token=%s", username, "repo1", token)
+
+	req := NewRequestWithJSON(t, "PATCH", urlStr, &api.CreateWikiPageOptions{
+		Title:         "edited title",
+		ContentBase64: base64.StdEncoding.EncodeToString([]byte("Edited wiki page content for API unit tests with more content")),
+		Message:       "",
+	})
+	session.MakeRequest(t, req, http.StatusInternalServerError)
 }
 
 func TestAPIListPageRevisions(t *testing.T) {

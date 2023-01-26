@@ -1018,6 +1018,8 @@ func DeleteRepository(doer *user_model.User, uid, repoID int64) error {
 		}
 	}
 
+	UpdateRepoSizesForUser(sess, uid)
+
 	return nil
 }
 

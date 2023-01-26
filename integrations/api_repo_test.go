@@ -301,21 +301,38 @@ func TestAPIGetRepoByIDUnauthorized(t *testing.T) {
 	session.MakeRequest(t, req, http.StatusNotFound)
 }
 
-func TestAPIRepoMigrate(t *testing.T) {
-	testCases := []struct {
-		ctxUserID, userID  int64
-		cloneURL, repoName string
-		expectedStatus     int
-	}{
+type MigrateTestCase struct {
+	ctxUserID, userID  int64
+	cloneURL, repoName string
+	expectedStatus     int
+}
+
+func TestAPIRepoMigrateMain(t *testing.T) {
+	testCases := []MigrateTestCase{
 		{ctxUserID: 1, userID: 2, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-admin", expectedStatus: http.StatusCreated},
 		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-own", expectedStatus: http.StatusCreated},
 		{ctxUserID: 2, userID: 1, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-bad", expectedStatus: http.StatusForbidden},
+	}
+	testMigrate(t, testCases)
+}
+
+func TestAPIRepoMigrateOrg(t *testing.T) {
+	testCases := []MigrateTestCase{
 		{ctxUserID: 2, userID: 3, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-org", expectedStatus: http.StatusCreated},
 		{ctxUserID: 2, userID: 6, cloneURL: "https://github.com/go-gitea/test_repo.git", repoName: "git-bad-org", expectedStatus: http.StatusForbidden},
+	}
+	testMigrate(t, testCases)
+}
+
+func TestAPIRepoMigratePrivate(t *testing.T) {
+	testCases := []MigrateTestCase{
 		{ctxUserID: 2, userID: 3, cloneURL: "https://localhost:3000/user/test_repo.git", repoName: "private-ip", expectedStatus: http.StatusUnprocessableEntity},
 		{ctxUserID: 2, userID: 3, cloneURL: "https://10.0.0.1/user/test_repo.git", repoName: "private-ip", expectedStatus: http.StatusUnprocessableEntity},
 	}
+	testMigrate(t, testCases)
+}
 
+func testMigrate(t *testing.T, testCases []MigrateTestCase) {
 	defer prepareTestEnv(t)()
 	for _, testCase := range testCases {
 		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: testCase.ctxUserID}).(*user_model.User)
@@ -341,6 +358,33 @@ func TestAPIRepoMigrate(t *testing.T) {
 		} else {
 			assert.EqualValues(t, testCase.expectedStatus, resp.Code)
 		}
+	}
+}
+
+func TestAPIRepoMigrateQuotaFail(t *testing.T) {
+	usedSpace := getUsedSpaceMoreThan(t, 0, 2)
+	testCases := []struct {
+		ctxUserID, userID  int64
+		cloneURL, repoName string
+		expectedStatus     int
+		quota              int64
+	}{
+		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-on-start", expectedStatus: http.StatusForbidden, quota: 1},
+		{ctxUserID: 2, userID: 2, cloneURL: "https://github.com/chromium/chromium.git", repoName: "git-quota-fail-in-clone-process", expectedStatus: http.StatusUnprocessableEntity, quota: usedSpace + defaultSpaceUsedKb + 1},
+	}
+
+	defer prepareTestEnv(t)()
+	for _, testCase := range testCases {
+		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: testCase.ctxUserID}).(*user_model.User)
+		session := loginUser(t, user.Name)
+		token := getTokenForLoggedInUser(t, session)
+		forceChangeQuota(2, testCase.quota)
+		req := NewRequestWithJSON(t, "POST", "/api/v1/repos/migrate?token="+token, &api.MigrateRepoOptions{
+			CloneAddr:   testCase.cloneURL,
+			RepoOwnerID: testCase.userID,
+			RepoName:    testCase.repoName,
+		})
+		MakeRequest(t, req, testCase.expectedStatus)
 	}
 }
 
@@ -380,6 +424,41 @@ func testAPIRepoMigrateConflict(t *testing.T, u *url.URL) {
 		DecodeJSON(t, resp, &respJSON)
 		assert.Equal(t, "The repository with the same name already exists.", respJSON["message"])
 	})
+}
+
+func TestAPIRepoCreationQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+	onGiteaRun(t, testAPIRepoCreationQuotaFail)
+}
+
+func testAPIRepoCreationQuotaFail(t *testing.T, u *url.URL) {
+	forceChangeQuota(2, 1)
+	username := "user2"
+	baseAPITestContext := NewAPITestContext(t, username, "repo1")
+
+	u.Path = baseAPITestContext.GitPath()
+
+	baseAPITestContext.Reponame = "repo-tmp-17"
+	baseAPITestContext.ExpectedCode = http.StatusInternalServerError
+	t.Run("CreateRepo", doAPICreateRepository(baseAPITestContext, false))
+}
+
+func TestAPIRepoDeletionQuota(t *testing.T) {
+	defer prepareTestEnv(t)()
+	onGiteaRun(t, testAPIRepoCreationQuotaFail)
+}
+
+func testAPIRepoDeletionQuota(t *testing.T, u *url.URL) {
+	username := "user2"
+	baseAPITestContext := NewAPITestContext(t, username, "repo1")
+
+	u.Path = baseAPITestContext.GitPath()
+
+	baseAPITestContext.Reponame = "repo-tmp-17"
+	t.Run("CreateRepo", doAPICreateRepository(baseAPITestContext, false))
+	usedSpace := getUsedSpaceMoreThan(t, defaultSpaceUsedKb, 2)
+	t.Run("DeleteRepo", doAPIDeleteRepository(baseAPITestContext))
+	getUsedSpaceLessThan(t, usedSpace, 2)
 }
 
 func TestAPIOrgRepoCreate(t *testing.T) {

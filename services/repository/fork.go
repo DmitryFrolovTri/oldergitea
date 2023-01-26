@@ -31,6 +31,11 @@ type ForkRepoOptions struct {
 
 // ForkRepository forks a repository
 func ForkRepository(doer, owner *user_model.User, opts ForkRepoOptions) (_ *repo_model.Repository, err error) {
+
+	if !owner.ВПределахКвотыЛи() {
+		return nil, fmt.Errorf("пользователь вне пределов квоты")
+	}
+
 	forkedRepo, err := repo_model.GetUserFork(opts.BaseRepo.ID, owner.ID)
 	if err != nil {
 		return nil, err

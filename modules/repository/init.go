@@ -245,7 +245,7 @@ func initRepository(ctx context.Context, repoPath string, u *user_model.User, re
 	}
 	defer gitRepo.Close()
 
-	gitRepo.SetReceiveMaxInputSize(1024) // 1 Kb
+	gitRepo.SetReceiveMaxInputSize(setting.Git.ReceiveMaxInputSize)
 
 	if len(opts.DefaultBranch) > 0 {
 		repo.DefaultBranch = opts.DefaultBranch

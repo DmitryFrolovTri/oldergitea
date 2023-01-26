@@ -149,6 +149,7 @@ func Recovery() func(next http.Handler) http.Handler {
 						store["SignedUserID"] = user.ID
 						store["SignedUserName"] = user.Name
 						store["IsAdmin"] = user.IsAdmin
+						store["QuotaExceeded"] = !user.ВПределахКвотыЛи()
 					} else {
 						store["SignedUserID"] = int64(0)
 						store["SignedUserName"] = ""

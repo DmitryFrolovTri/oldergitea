@@ -345,6 +345,16 @@ func (repo *Repository) GetOwner(ctx context.Context) (err error) {
 	return err
 }
 
+func (repo *Repository) GetRemainedSpaceKb(ctx context.Context) (int64, error) {
+	if repo.Owner == nil {
+		err := repo.GetOwner(ctx)
+		if err != nil {
+			return -1, err
+		}
+	}
+	return repo.Owner.QuotaKb - repo.Owner.SpaceUsedKb, nil
+}
+
 func (repo *Repository) mustOwner(ctx context.Context) *user_model.User {
 	if err := repo.GetOwner(ctx); err != nil {
 		return &user_model.User{

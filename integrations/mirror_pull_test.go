@@ -6,6 +6,10 @@ package integrations
 
 import (
 	"context"
+	"strconv"
+	"net/http"
+	"net/url"
+	"os"
 	"testing"
 
 	"code.gitea.io/gitea/models"
@@ -15,6 +19,7 @@ import (
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/migration"
 	"code.gitea.io/gitea/modules/repository"
+	"code.gitea.io/gitea/modules/util"
 	mirror_service "code.gitea.io/gitea/services/mirror"
 	release_service "code.gitea.io/gitea/services/release"
 
@@ -94,4 +99,110 @@ func TestMirrorPull(t *testing.T) {
 	count, err = models.GetReleaseCountByRepoID(mirror.ID, findOptions)
 	assert.NoError(t, err)
 	assert.EqualValues(t, initCount, count)
+}
+
+func TestMirrorPullQuota(t *testing.T) {
+	defer prepareTestEnv(t)()
+	onGiteaRun(t, testMirrorPull)
+}
+
+func testMirrorPull(t *testing.T, u *url.URL) {
+	user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}).(*user_model.User)
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1}).(*repo_model.Repository)
+	repoPath := repo_model.RepoPath(user.Name, repo.Name)
+
+	opts := migration.MigrateOptions{
+		RepoName:    "test_mirror",
+		Description: "Test mirror",
+		Private:     false,
+		Mirror:      true,
+		CloneAddr:   repoPath,
+		Wiki:        true,
+		Releases:    false,
+	}
+
+	mirrorRepo, err := repository.CreateRepository(user, user, models.CreateRepoOptions{
+		Name:        opts.RepoName,
+		Description: opts.Description,
+		IsPrivate:   opts.Private,
+		IsMirror:    opts.Mirror,
+		Status:      repo_model.RepositoryBeingMigrated,
+	})
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+
+	usedSpace := getUsedSpaceMoreThan(t, 0, user.ID)
+	mirror, err := repository.MigrateRepositoryGitData(ctx, user, mirrorRepo, opts, nil)
+	assert.NoError(t, err)
+	_, err = repo_model.GetMirrorByRepoID(mirror.ID)
+	assert.NoError(t, err)
+	usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+
+	commitSizeKb := 10
+
+	httpContext := NewAPITestContext(t, user.Name, repo.Name)
+	u.Path = httpContext.GitPath()
+	u.User = url.UserPassword(user.Name, userPassword)
+
+	dstPath, err := os.MkdirTemp("", httpContext.Reponame)
+	assert.NoError(t, err)
+	defer util.RemoveAll(dstPath)
+
+	t.Run("Prepare by clone", doGitClone(dstPath, u))
+
+	t.Run("Increase Quota On Normal", func(t *testing.T) {
+		defer PrintCurrentTest(t)()
+
+		t.Run("Simple commit", func(t *testing.T) {
+			defer PrintCurrentTest(t)()
+			doCommitAndPush(t, commitSizeKb*1024, dstPath, "data-file-", false)
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+
+			ok := mirror_service.SyncPullMirror(ctx, mirror.ID)
+			assert.True(t, ok)
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace-1+int64(commitSizeKb), user.ID)
+		})
+
+		t.Run("LFS", func(t *testing.T) {
+			lfsCommitAndPushTest(t, dstPath, false)
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+
+			ok := mirror_service.SyncPullMirror(ctx, mirror.ID)
+			assert.True(t, ok)
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+		})
+
+		t.Run("Wiki", func(t *testing.T) {
+			defer PrintCurrentTest(t)()
+
+			session := loginUser(t, user.Name)
+			token := getTokenForLoggedInUser(t, session)
+			createWikiPage(t, session, token, user.Name, repo.Name, "wikki", http.StatusCreated)
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+
+			ok := mirror_service.SyncPullMirror(ctx, mirror.ID)
+			assert.True(t, ok)
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+		})
+	})
+
+	t.Run("Increase Quota On Fail", func(t *testing.T) {
+		defer PrintCurrentTest(t)()
+
+		for i := 0; i < 20; i++ {
+			doCommitAndPush(t, commitSizeKb*1024, dstPath, "data-file-"+strconv.Itoa(i), false)
+			_, err := generateCommitWithNewData(commitSizeKb*1024, dstPath, "user2@example.com", "User Two", "data-file-"+strconv.Itoa(i))
+			assert.NoError(t, err)
+		}
+		_, err = git.NewCommand("push", "origin", "master").RunInDir(dstPath)
+		assert.NoError(t, err)
+		usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+
+		forceChangeQuota(user.ID, usedSpace+int64(commitSizeKb)*2)
+
+		ok := mirror_service.SyncPullMirror(ctx, mirror.ID)
+		assert.False(t, ok)
+		usedSpace = getUsedSpaceMoreThan(t, usedSpace, user.ID)
+	})
 }

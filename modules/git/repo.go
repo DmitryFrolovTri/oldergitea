@@ -107,6 +107,7 @@ type CloneRepoOptions struct {
 	Depth         int
 	Filter        string
 	SkipTLSVerify bool
+	KillerFunc    func(func() error)
 }
 
 // Clone clones original repository to target path.
@@ -172,10 +173,11 @@ func CloneWithArgs(ctx context.Context, from, to string, args []string, opts Clo
 
 	var stderr = new(bytes.Buffer)
 	if err = cmd.RunWithContext(&RunContext{
-		Timeout: opts.Timeout,
-		Env:     envs,
-		Stdout:  io.Discard,
-		Stderr:  stderr,
+		Timeout:    opts.Timeout,
+		Env:        envs,
+		Stdout:     io.Discard,
+		Stderr:     stderr,
+		KillerFunc: opts.KillerFunc,
 	}); err != nil {
 		return ConcatenateError(err, stderr.String())
 	}

@@ -28,6 +28,7 @@ var (
 		LargeObjectThreshold      int64
 		DisableCoreProtectNTFS    bool
 		DisablePartialClone       bool
+		ReceiveMaxInputSize       int64
 		Timeout                   struct {
 			Default int
 			Migrate int
@@ -50,6 +51,7 @@ var (
 		PullRequestPushMessage:    true,
 		LargeObjectThreshold:      1024 * 1024,
 		DisablePartialClone:       false,
+		ReceiveMaxInputSize:       1024, // 1 Kb
 		Timeout: struct {
 			Default int
 			Migrate int

@@ -183,9 +183,20 @@ func pruneBrokenReferences(ctx context.Context,
 
 // runSync returns true if sync finished without error.
 func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bool) {
+	defer func() {
+		if err := models.UpdateRepoSize(db.DefaultContext, m.Repo); err != nil {
+			log.Error("SyncMirrors [repo: %-v]: failed to update size for mirror repository on finish: %v", m.Repo, err)
+		}
+	}()
+
 	repoPath := m.Repo.RepoPath()
 	wikiPath := m.Repo.WikiPath()
 	timeout := time.Duration(setting.Git.Timeout.Mirror) * time.Second
+	remainedSpaceKb, err := m.Repo.GetRemainedSpaceKb(ctx)
+	if err != nil {
+		log.Error("SyncMirrors [repo: %-v]: can't get remained space: %v", m.Repo, err)
+		return nil, false
+	}
 
 	log.Trace("SyncMirrors [repo: %-v]: running git remote update...", m.Repo)
 	gitArgs := []string{"remote", "update"}
@@ -201,9 +212,24 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 
 	stdoutBuilder := strings.Builder{}
 	stderrBuilder := strings.Builder{}
+	mainWatcher := util.WatcherData{Run: true, Err: nil}
+	dirSize, err := util.GetDirectorySize(repoPath)
+	if err != nil {
+		log.Error("SyncMirrors [repo: %-v]: can't calc dir size: %v", m.Repo, err)
+		return nil, false
+	}
+	remainedSpaceKb += dirSize / 1024
+
 	if err := git.NewCommandContext(ctx, gitArgs...).
 		SetDescription(fmt.Sprintf("Mirror.runSync: %s", m.Repo.FullName())).
-		RunInDirTimeoutPipeline(timeout, repoPath, &stdoutBuilder, &stderrBuilder); err != nil {
+		RunInDirTimeoutKillerFunc(timeout, repoPath, &stdoutBuilder, &stderrBuilder, func(kill func() error) {
+			go util.WatchDirSizeLimit(&mainWatcher, repoPath, remainedSpaceKb, repo_model.ErrКвотаПревышена{"владелец"}, kill)
+		}); err != nil {
+		mainWatcher.Run = false
+		if mainWatcher.Err != nil {
+			log.Warn("SyncMirrors [repo: %-v]: watcher failed - %v", m.Repo, mainWatcher.Err)
+			return nil, false
+		}
 		stdout := stdoutBuilder.String()
 		stderr := stderrBuilder.String()
 
@@ -224,9 +250,17 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 				// Successful prune - reattempt mirror
 				stderrBuilder.Reset()
 				stdoutBuilder.Reset()
+				mainWatcherAttempt := util.WatcherData{Err: nil, Run: true}
 				if err = git.NewCommandContext(ctx, gitArgs...).
 					SetDescription(fmt.Sprintf("Mirror.runSync: %s", m.Repo.FullName())).
-					RunInDirTimeoutPipeline(timeout, repoPath, &stdoutBuilder, &stderrBuilder); err != nil {
+					RunInDirTimeoutKillerFunc(timeout, repoPath, &stdoutBuilder, &stderrBuilder, func(kill func() error) {
+						go util.WatchDirSizeLimit(&mainWatcherAttempt, repoPath, remainedSpaceKb, repo_model.ErrКвотаПревышена{"владелец"}, kill)
+					}); err != nil {
+					mainWatcherAttempt.Run = false
+					if mainWatcherAttempt.Err != nil {
+						log.Warn("SyncMirrors [repo: %-v]: watcher failed - %v", m.Repo, mainWatcherAttempt.Err)
+						return nil, false
+					}
 					stdout := stdoutBuilder.String()
 					stderr := stderrBuilder.String()
 
@@ -234,6 +268,11 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 					// contain a password
 					stderrMessage = sanitizer.Replace(stderr)
 					stdoutMessage = sanitizer.Replace(stdout)
+				}
+				mainWatcherAttempt.Run = false
+				if mainWatcherAttempt.Err != nil {
+					log.Warn("SyncMirrors [repo: %-v]: watcher failed - %v", m.Repo, mainWatcherAttempt.Err)
+					return nil, false
 				}
 			}
 		}
@@ -248,9 +287,24 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 			return nil, false
 		}
 	}
+	mainWatcher.Run = false
+	if mainWatcher.Err != nil {
+		log.Warn("SyncMirrors [repo: %-v]: watcher failed - %v", m.Repo, mainWatcher.Err)
+		return nil, false
+	}
+
+	dirSize, err = util.GetDirectorySize(repoPath)
+	if err != nil {
+		log.Error("SyncMirrors [repo: %-v]: can't calc dir size: %v", m.Repo, err)
+		return nil, false
+	}
+	remainedSpaceKb -= dirSize / 1024
+
 	output := stderrBuilder.String()
 
 	gitRepo, err := git.OpenRepository(repoPath)
+	defer func() { gitRepo.Close() }()
+
 	if err != nil {
 		log.Error("SyncMirrors [repo: %-v]: failed to OpenRepository: %v", m.Repo, err)
 		return nil, false
@@ -261,16 +315,6 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 		log.Error("SyncMirrors [repo: %-v]: failed to synchronize tags to releases: %v", m.Repo, err)
 	}
 
-	if m.LFS && setting.LFS.StartServer {
-		log.Trace("SyncMirrors [repo: %-v]: syncing LFS objects...", m.Repo)
-		endpoint := lfs.DetermineEndpoint(remoteAddr.String(), m.LFSEndpoint)
-		lfsClient := lfs.NewClient(endpoint, nil)
-		if err = repo_module.StoreMissingLfsObjectsInRepository(ctx, m.Repo, gitRepo, lfsClient); err != nil {
-			log.Error("SyncMirrors [repo: %-v]: failed to synchronize LFS objects for repository: %v", m.Repo, err)
-		}
-	}
-	gitRepo.Close()
-
 	log.Trace("SyncMirrors [repo: %-v]: updating size of repository", m.Repo)
 	if err := models.UpdateRepoSize(db.DefaultContext, m.Repo); err != nil {
 		log.Error("SyncMirrors [repo: %-v]: failed to update size for mirror repository: %v", m.Repo, err)
@@ -280,9 +324,23 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 		log.Trace("SyncMirrors [repo: %-v Wiki]: running git remote update...", m.Repo)
 		stderrBuilder.Reset()
 		stdoutBuilder.Reset()
+		wikiWatcher := util.WatcherData{Run: true, Err: nil}
+		dirSize, err = util.GetDirectorySize(wikiPath)
+		if err != nil {
+			log.Error("SyncMirrors [repo: %-v]: can't calc dir size: %v", m.Repo, err)
+			return nil, false
+		}
+		remainedSpaceKb += dirSize / 1024
 		if err := git.NewCommandContext(ctx, "remote", "update", "--prune", m.GetRemoteName()).
 			SetDescription(fmt.Sprintf("Mirror.runSync Wiki: %s ", m.Repo.FullName())).
-			RunInDirTimeoutPipeline(timeout, wikiPath, &stdoutBuilder, &stderrBuilder); err != nil {
+			RunInDirTimeoutKillerFunc(timeout, wikiPath, &stdoutBuilder, &stderrBuilder, func(kill func() error) {
+				go util.WatchDirSizeLimit(&wikiWatcher, repoPath, remainedSpaceKb, repo_model.ErrКвотаПревышена{"владелец"}, kill)
+			}); err != nil {
+			wikiWatcher.Run = false
+			if wikiWatcher.Err != nil {
+				log.Warn("SyncMirrors [repo: %-v Wiki]: watcher failed - %v", m.Repo, wikiWatcher.Err)
+				return nil, false
+			}
 			stdout := stdoutBuilder.String()
 			stderr := stderrBuilder.String()
 
@@ -311,14 +369,26 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 					// Successful prune - reattempt mirror
 					stderrBuilder.Reset()
 					stdoutBuilder.Reset()
-
+					wikiWatcherAttempt := util.WatcherData{Run: true, Err: nil}
 					if err = git.NewCommandContext(ctx, "remote", "update", "--prune", m.GetRemoteName()).
 						SetDescription(fmt.Sprintf("Mirror.runSync Wiki: %s ", m.Repo.FullName())).
-						RunInDirTimeoutPipeline(timeout, wikiPath, &stdoutBuilder, &stderrBuilder); err != nil {
+						RunInDirTimeoutKillerFunc(timeout, wikiPath, &stdoutBuilder, &stderrBuilder, func(kill func() error) {
+							go util.WatchDirSizeLimit(&wikiWatcherAttempt, repoPath, remainedSpaceKb, repo_model.ErrКвотаПревышена{"владелец"}, kill)
+						}); err != nil {
+						wikiWatcherAttempt.Run = false
+						if wikiWatcherAttempt.Err != nil {
+							log.Warn("SyncMirrors [repo: %-v Wiki]: watcher failed - %v", m.Repo, wikiWatcherAttempt.Err)
+							return nil, false
+						}
 						stdout := stdoutBuilder.String()
 						stderr := stderrBuilder.String()
 						stderrMessage = sanitizer.Replace(stderr)
 						stdoutMessage = sanitizer.Replace(stdout)
+					}
+					wikiWatcherAttempt.Run = false
+					if wikiWatcherAttempt.Err != nil {
+						log.Warn("SyncMirrors [repo: %-v Wiki]: watcher failed - %v", m.Repo, wikiWatcherAttempt.Err)
+						return nil, false
 					}
 				}
 			}
@@ -333,7 +403,30 @@ func runSync(ctx context.Context, m *repo_model.Mirror) ([]*mirrorSyncResult, bo
 				return nil, false
 			}
 		}
+		wikiWatcher.Run = false
+		if wikiWatcher.Err != nil {
+			log.Warn("SyncMirrors [repo: %-v Wiki]: watcher failed - %v", m.Repo, wikiWatcher.Err)
+			return nil, false
+		}
+		dirSize, err = util.GetDirectorySize(wikiPath)
+		if err != nil {
+			log.Error("SyncMirrors [repo: %-v Wiki]: can't calc dir size: %v", m.Repo, err)
+			return nil, false
+		}
+		remainedSpaceKb -= dirSize / 1024
 		log.Trace("SyncMirrors [repo: %-v Wiki]: git remote update complete", m.Repo)
+	}
+
+	if m.LFS && setting.LFS.StartServer {
+		log.Trace("SyncMirrors [repo: %-v]: syncing LFS objects...", m.Repo)
+		endpoint := lfs.DetermineEndpoint(remoteAddr.String(), m.LFSEndpoint)
+		lfsClient := lfs.NewClient(endpoint, nil)
+		if err = repo_module.StoreMissingLfsObjectsInRepository(ctx, m.Repo, gitRepo, lfsClient, remainedSpaceKb); err != nil {
+			log.Error("SyncMirrors [repo: %-v]: failed to synchronize LFS objects for repository: %v", m.Repo, err)
+			if repo_model.IsErrКвотаПревышена(err) {
+				return nil, false
+			}
+		}
 	}
 
 	log.Trace("SyncMirrors [repo: %-v]: invalidating mirror branch caches...", m.Repo)

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"code.gitea.io/gitea/modules/log"
@@ -104,12 +105,16 @@ func (c *Command) RunInDirTimeoutEnvPipeline(env []string, timeout time.Duration
 // RunInDirTimeoutEnvFullPipeline executes the command in given directory with given timeout,
 // it pipes stdout and stderr to given io.Writer and passes in an io.Reader as stdin.
 func (c *Command) RunInDirTimeoutEnvFullPipeline(env []string, timeout time.Duration, dir string, stdout, stderr io.Writer, stdin io.Reader) error {
-	return c.RunInDirTimeoutEnvFullPipelineFunc(env, timeout, dir, stdout, stderr, stdin, nil)
+	return c.RunInDirTimeoutEnvFullPipelineKillerFunc(env, timeout, dir, stdout, stderr, stdin, nil, nil)
 }
 
 // RunInDirTimeoutEnvFullPipelineFunc executes the command in given directory with given timeout,
 // it pipes stdout and stderr to given io.Writer and passes in an io.Reader as stdin. Between cmd.Start and cmd.Wait the passed in function is run.
 func (c *Command) RunInDirTimeoutEnvFullPipelineFunc(env []string, timeout time.Duration, dir string, stdout, stderr io.Writer, stdin io.Reader, fn func(context.Context, context.CancelFunc) error) error {
+	return c.RunInDirTimeoutEnvFullPipelineKillerFunc(env, timeout, dir, stdout, stderr, stdin, fn, nil)
+}
+
+func (c *Command) RunInDirTimeoutEnvFullPipelineKillerFunc(env []string, timeout time.Duration, dir string, stdout, stderr io.Writer, stdin io.Reader, fn func(context.Context, context.CancelFunc) error, kfn func(func() error)) error {
 	return c.RunWithContext(&RunContext{
 		Env:          env,
 		Timeout:      timeout,
@@ -118,6 +123,7 @@ func (c *Command) RunInDirTimeoutEnvFullPipelineFunc(env []string, timeout time.
 		Stderr:       stderr,
 		Stdin:        stdin,
 		PipelineFunc: fn,
+		KillerFunc:   kfn,
 	})
 }
 
@@ -129,6 +135,7 @@ type RunContext struct {
 	Stdout, Stderr io.Writer
 	Stdin          io.Reader
 	PipelineFunc   func(context.Context, context.CancelFunc) error
+	KillerFunc     func(func() error)
 }
 
 // RunWithContext run the command with context
@@ -175,6 +182,7 @@ func (c *Command) RunWithContext(rc *RunContext) error {
 	cmd.Stdout = rc.Stdout
 	cmd.Stderr = rc.Stderr
 	cmd.Stdin = rc.Stdin
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -188,6 +196,16 @@ func (c *Command) RunWithContext(rc *RunContext) error {
 		}
 	}
 
+	if rc.KillerFunc != nil {
+		rc.KillerFunc(func() error {
+			pgid, err := syscall.Getpgid(cmd.Process.Pid)
+			if err != nil {
+				return err
+			}
+			return syscall.Kill(-pgid, 15)
+		})
+	}
+
 	if err := cmd.Wait(); err != nil && ctx.Err() != context.DeadlineExceeded {
 		return err
 	}
@@ -199,6 +217,10 @@ func (c *Command) RunWithContext(rc *RunContext) error {
 // it pipes stdout and stderr to given io.Writer.
 func (c *Command) RunInDirTimeoutPipeline(timeout time.Duration, dir string, stdout, stderr io.Writer) error {
 	return c.RunInDirTimeoutEnvPipeline(nil, timeout, dir, stdout, stderr)
+}
+
+func (c *Command) RunInDirTimeoutKillerFunc(timeout time.Duration, dir string, stdout, stderr io.Writer, n func(func() error)) error {
+	return c.RunInDirTimeoutEnvFullPipelineKillerFunc(nil, timeout, dir, stdout, stderr, nil, nil, n)
 }
 
 // RunInDirTimeoutFullPipeline executes the command in given directory with given timeout,

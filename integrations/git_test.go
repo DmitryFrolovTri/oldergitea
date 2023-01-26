@@ -58,11 +58,16 @@ func testGit(t *testing.T, u *url.URL) {
 		dstPath, err := os.MkdirTemp("", httpContext.Reponame)
 		assert.NoError(t, err)
 		defer util.RemoveAll(dstPath)
+		var usedSpace int64 = 0
 
 		t.Run("CreateRepoInDifferentUser", doAPICreateRepository(forkedUserCtx, false))
 		t.Run("AddUserAsCollaborator", doAPIAddCollaborator(forkedUserCtx, httpContext.Username, perm.AccessModeRead))
 
 		t.Run("ForkFromDifferentUser", doAPIForkRepository(httpContext, forkedUserCtx.Username))
+		t.Run("ForkQuotaCheck", func(t *testing.T) {
+			defer PrintCurrentTest(t)()
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace+defaultSpaceUsedKb, 2)
+		})
 
 		u.Path = httpContext.GitPath()
 		u.User = url.UserPassword(username, userPassword)
@@ -75,8 +80,18 @@ func testGit(t *testing.T, u *url.URL) {
 
 		t.Run("Partial Clone", doPartialGitClone(dstPath2, u))
 
-		little, big := standardCommitAndPushTest(t, dstPath)
-		littleLFS, bigLFS := lfsCommitAndPushTest(t, dstPath)
+		little, big := standardCommitAndPushTest(t, dstPath, false)
+		t.Run("PushQuotaCheck", func(t *testing.T) {
+			defer PrintCurrentTest(t)()
+			usedSpace = getUsedSpaceMoreThan(t, usedSpace+littleSize, 2)
+		})
+		littleLFS, bigLFS := lfsCommitAndPushTest(t, dstPath, false)
+		if littleLFS != "" {
+			t.Run("PushLFSQuotaCheck", func(t *testing.T) {
+				defer PrintCurrentTest(t)()
+				usedSpace = getUsedSpaceMoreThan(t, usedSpace, 2)
+			})
+		}
 		rawTest(t, &httpContext, little, big, littleLFS, bigLFS)
 		mediaTest(t, &httpContext, little, big, littleLFS, bigLFS)
 
@@ -85,7 +100,12 @@ func testGit(t *testing.T, u *url.URL) {
 		t.Run("CreatePRAndSetManuallyMerged", doCreatePRAndSetManuallyMerged(httpContext, httpContext, dstPath, "master", "test-manually-merge"))
 		t.Run("MergeFork", func(t *testing.T) {
 			defer PrintCurrentTest(t)()
+			var usedSpaceFork int64 = getUsedSpaceMoreThan(t, 0, 4)
 			t.Run("CreatePRAndMerge", doMergeFork(httpContext, forkedUserCtx, "master", httpContext.Username+":master"))
+			t.Run("MergeQuotaCheck", func(t *testing.T) {
+				defer PrintCurrentTest(t)()
+				getUsedSpaceMoreThan(t, usedSpaceFork, 4)
+			})
 			rawTest(t, &forkedUserCtx, little, big, littleLFS, bigLFS)
 			mediaTest(t, &forkedUserCtx, little, big, littleLFS, bigLFS)
 		})
@@ -117,8 +137,8 @@ func testGit(t *testing.T, u *url.URL) {
 
 			t.Run("Clone", doGitClone(dstPath, sshURL))
 
-			little, big := standardCommitAndPushTest(t, dstPath)
-			littleLFS, bigLFS := lfsCommitAndPushTest(t, dstPath)
+			little, big := standardCommitAndPushTest(t, dstPath, false)
+			littleLFS, bigLFS := lfsCommitAndPushTest(t, dstPath, false)
 			rawTest(t, &sshContext, little, big, littleLFS, bigLFS)
 			mediaTest(t, &sshContext, little, big, littleLFS, bigLFS)
 
@@ -136,6 +156,61 @@ func testGit(t *testing.T, u *url.URL) {
 	})
 }
 
+func TestGitQuotaFail(t *testing.T) {
+	defer prepareTestEnv(t)()
+	onGiteaRun(t, testGitQuotaFail)
+}
+
+func testGitQuotaFail(t *testing.T, u *url.URL) {
+	username := "user2"
+	baseAPITestContext := NewAPITestContext(t, username, "repo1")
+
+	u.Path = baseAPITestContext.GitPath()
+
+	forkedUserCtx := NewAPITestContext(t, "user4", "repo1")
+
+	t.Run("HTTP", func(t *testing.T) {
+		defer PrintCurrentTest(t)()
+		forceChangeQuota(2, 1)
+
+		httpContext := baseAPITestContext
+		httpContext.Reponame = "repo-tmp-17"
+		forkedUserCtx.Reponame = httpContext.Reponame
+
+		dstPath, err := os.MkdirTemp("", httpContext.Reponame)
+		assert.NoError(t, err)
+		defer util.RemoveAll(dstPath)
+
+		t.Run("CreateRepoInDifferentUser", doAPICreateRepository(forkedUserCtx, false))
+		t.Run("AddUserAsCollaborator", doAPIAddCollaborator(forkedUserCtx, httpContext.Username, perm.AccessModeRead))
+		httpContext.ExpectedCode = http.StatusInternalServerError
+		t.Run("ForkFromDifferentUser", doAPIForkRepository(httpContext, forkedUserCtx.Username))
+		httpContext.ExpectedCode = 0
+		forceChangeQuota(2, 1000000000)
+		t.Run("ForkFromDifferentUser", doAPIForkRepository(httpContext, forkedUserCtx.Username))
+		forceChangeQuota(2, 1)
+
+		u.Path = httpContext.GitPath()
+		u.User = url.UserPassword(username, userPassword)
+
+		t.Run("Clone", doGitClone(dstPath, u))
+
+		standardCommitAndPushTest(t, dstPath, true)
+		lfsCommitAndPushTest(t, dstPath, true)
+
+		forceChangeQuota(2, 10000000000)
+		t.Run("CreateAgitFlowPull", doCreateAgitFlowPull(dstPath, &httpContext, "master", "test/head"))
+		t.Run("BranchProtectMerge", doBranchProtectPRMerge(&httpContext, dstPath))
+		t.Run("CreatePRAndSetManuallyMerged", doCreatePRAndSetManuallyMerged(httpContext, httpContext, dstPath, "master", "test-manually-merge"))
+		forceChangeQuota(4, 1)
+		t.Run("MergeFork", func(t *testing.T) {
+			defer PrintCurrentTest(t)()
+			forkedUserCtx.ExpectedCode = http.StatusMethodNotAllowed
+			t.Run("CreatePRAndMerge", doMergeFork(httpContext, forkedUserCtx, "master", httpContext.Username+":master"))
+		})
+	})
+}
+
 func ensureAnonymousClone(t *testing.T, u *url.URL) {
 	dstLocalPath, err := os.MkdirTemp("", "repo1")
 	assert.NoError(t, err)
@@ -144,15 +219,15 @@ func ensureAnonymousClone(t *testing.T, u *url.URL) {
 
 }
 
-func standardCommitAndPushTest(t *testing.T, dstPath string) (little, big string) {
+func standardCommitAndPushTest(t *testing.T, dstPath string, waitPushError bool) (little, big string) {
 	t.Run("Standard", func(t *testing.T) {
 		defer PrintCurrentTest(t)()
-		little, big = commitAndPushTest(t, dstPath, "data-file-")
+		little, big = commitAndPushTest(t, dstPath, "data-file-", waitPushError)
 	})
 	return
 }
 
-func lfsCommitAndPushTest(t *testing.T, dstPath string) (littleLFS, bigLFS string) {
+func lfsCommitAndPushTest(t *testing.T, dstPath string, waitPushError bool) (littleLFS, bigLFS string) {
 	t.Run("LFS", func(t *testing.T) {
 		defer PrintCurrentTest(t)()
 		git.CheckLFSVersion()
@@ -183,7 +258,7 @@ func lfsCommitAndPushTest(t *testing.T, dstPath string) (littleLFS, bigLFS strin
 		})
 		assert.NoError(t, err)
 
-		littleLFS, bigLFS = commitAndPushTest(t, dstPath, prefix)
+		littleLFS, bigLFS = commitAndPushTest(t, dstPath, prefix, waitPushError)
 
 		t.Run("Locks", func(t *testing.T) {
 			defer PrintCurrentTest(t)()
@@ -193,12 +268,12 @@ func lfsCommitAndPushTest(t *testing.T, dstPath string) (littleLFS, bigLFS strin
 	return
 }
 
-func commitAndPushTest(t *testing.T, dstPath, prefix string) (little, big string) {
+func commitAndPushTest(t *testing.T, dstPath, prefix string, waitPushError bool) (little, big string) {
 	t.Run("PushCommit", func(t *testing.T) {
 		defer PrintCurrentTest(t)()
 		t.Run("Little", func(t *testing.T) {
 			defer PrintCurrentTest(t)()
-			little = doCommitAndPush(t, littleSize, dstPath, prefix)
+			little = doCommitAndPush(t, littleSize, dstPath, prefix, waitPushError)
 		})
 		t.Run("Big", func(t *testing.T) {
 			if testing.Short() {
@@ -206,7 +281,7 @@ func commitAndPushTest(t *testing.T, dstPath, prefix string) (little, big string
 				return
 			}
 			defer PrintCurrentTest(t)()
-			big = doCommitAndPush(t, bigSize, dstPath, prefix)
+			big = doCommitAndPush(t, bigSize, dstPath, prefix, waitPushError)
 		})
 	})
 	return
@@ -303,11 +378,15 @@ func lockFileTest(t *testing.T, filename, repoPath string) {
 	assert.NoError(t, err)
 }
 
-func doCommitAndPush(t *testing.T, size int, repoPath, prefix string) string {
+func doCommitAndPush(t *testing.T, size int, repoPath, prefix string, waitPushError bool) string {
 	name, err := generateCommitWithNewData(size, repoPath, "user2@example.com", "User Two", prefix)
 	assert.NoError(t, err)
 	_, err = git.NewCommand("push", "origin", "master").RunInDir(repoPath) //Push
-	assert.NoError(t, err)
+	if waitPushError {
+		assert.Error(t, err)
+	} else {
+		assert.NoError(t, err)
+	}
 	return name
 }
 
@@ -485,6 +564,9 @@ func doMergeFork(ctx, baseCtx APITestContext, baseBranch, headBranch string) fun
 
 		// Now: Merge the PR & make sure that doesn't break the PR page or change its diff
 		t.Run("MergePR", doAPIMergePullRequest(baseCtx, baseCtx.Username, baseCtx.Reponame, pr.Index))
+		if baseCtx.ExpectedCode == http.StatusMethodNotAllowed {
+			return
+		}
 		t.Run("EnsureCanSeePull", doEnsureCanSeePull(baseCtx, pr))
 		t.Run("CheckPR", func(t *testing.T) {
 			oldMergeBase := pr.MergeBase

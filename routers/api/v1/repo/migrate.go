@@ -82,6 +82,11 @@ func Migrate(ctx *context.APIContext) {
 		return
 	}
 
+	if !repoOwner.ВПределахКвотыЛи() {
+		ctx.Error(http.StatusForbidden, "", "пользователь вне пределов квоты")
+		return
+	}
+
 	if !ctx.User.IsAdmin {
 		if !repoOwner.IsOrganization() && ctx.User.ID != repoOwner.ID {
 			ctx.Error(http.StatusForbidden, "", "Given user is not an organization.")
@@ -218,6 +223,8 @@ func handleMigrateError(ctx *context.APIContext, repoOwner *user_model.User, rem
 		ctx.Error(http.StatusConflict, "", "The repository with the same name already exists.")
 	case repo_model.IsErrRepoFilesAlreadyExist(err):
 		ctx.Error(http.StatusConflict, "", "Files already exist for this repository. Adopt them or delete them.")
+	case repo_model.IsErrКвотаПревышена(err):
+		ctx.Error(http.StatusUnprocessableEntity, "", "Квота превышена")
 	case migrations.IsRateLimitError(err):
 		ctx.Error(http.StatusUnprocessableEntity, "", "Remote visit addressed rate limitation.")
 	case migrations.IsTwoFactorAuthError(err):
