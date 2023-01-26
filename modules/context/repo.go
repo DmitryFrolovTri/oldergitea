@@ -77,9 +77,13 @@ type Repository struct {
 	PullRequest *PullRequest
 }
 
+func (r *Repository) ВПределахКвотыЛи() bool {
+	return r.Owner.ВПределахКвотыЛи()
+}
+
 // CanEnableEditor returns true if repository is editable and user has proper access level.
 func (r *Repository) CanEnableEditor() bool {
-	return r.Permission.CanWrite(unit_model.TypeCode) && r.Repository.CanEnableEditor() && r.IsViewBranch && !r.Repository.IsArchived
+	return r.Permission.CanWrite(unit_model.TypeCode) && r.Repository.CanEnableEditor() && r.IsViewBranch && !r.Repository.IsArchived && r.ВПределахКвотыЛи()
 }
 
 // CanCreateBranch returns true if repository is editable and user has proper access level.
@@ -115,10 +119,12 @@ func (r *Repository) CanCommitToBranch(doer *user_model.User) (CanCommitToBranch
 	if err != nil {
 		return CanCommitToBranchResults{}, err
 	}
-	userCanPush := true
+
+	вПределахКвотыЛи := r.ВПределахКвотыЛи()
+	userCanPush := true && вПределахКвотыЛи
 	requireSigned := false
 	if protectedBranch != nil {
-		userCanPush = protectedBranch.CanUserPush(doer.ID)
+		userCanPush = protectedBranch.CanUserPush(doer.ID) && вПределахКвотыЛи
 		requireSigned = protectedBranch.RequireSignedCommits
 	}
 
@@ -161,7 +167,7 @@ func (r *Repository) CanUseTimetracker(issue *models.Issue, user *user_model.Use
 
 // CanCreateIssueDependencies returns whether or not a user can create dependencies.
 func (r *Repository) CanCreateIssueDependencies(user *user_model.User, isPull bool) bool {
-	return r.Repository.IsDependenciesEnabled() && r.Permission.CanWriteIssuesOrPulls(isPull)
+	return user.ВПределахКвотыЛи() && r.Owner.ВПределахКвотыЛи() && r.Repository.IsDependenciesEnabled() && r.Permission.CanWriteIssuesOrPulls(isPull)
 }
 
 // GetCommitsCount returns cached commit count for current view

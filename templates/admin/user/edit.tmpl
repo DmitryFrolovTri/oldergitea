@@ -90,6 +90,13 @@
 					<p class="help">{{.i18n.Tr "admin.users.max_repo_creation_desc"}}</p>
 				</div>
 
+				<div class="inline field {{if .Err_Quota}}error{{end}}">
+					<label for="quota_kb">Квота, кб</label>
+					<input id="quota_kb" name="quota_kb" type="number" value="{{.User.QuotaKb}}">
+					<p class="help">Размер данных пользователя в Кб, при превышении к-рого доступ на запись приостанавливается</p>
+				</div>
+
+
 				<div class="ui divider"></div>
 
 				<div class="inline field">

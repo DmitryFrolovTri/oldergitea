@@ -369,6 +369,7 @@ func EditUserPost(ctx *context.Context) {
 	u.Website = form.Website
 	u.Location = form.Location
 	u.MaxRepoCreation = form.MaxRepoCreation
+	u.QuotaKb = form.QuotaKb
 	u.IsActive = form.Active
 	u.IsAdmin = form.Admin
 	u.IsRestricted = form.Restricted

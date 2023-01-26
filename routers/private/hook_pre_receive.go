@@ -53,7 +53,7 @@ func (ctx *preReceiveContext) CanWriteCode() bool {
 		if !ctx.loadPusherAndPermission() {
 			return false
 		}
-		ctx.canWriteCode = ctx.userPerm.CanWrite(unit.TypeCode) || ctx.deployKeyAccessMode >= perm_model.AccessModeWrite
+		ctx.canWriteCode = ctx.user.ВПределахКвотыЛи() && (ctx.userPerm.CanWrite(unit.TypeCode) || ctx.deployKeyAccessMode >= perm_model.AccessModeWrite)
 		ctx.checkedCanWriteCode = true
 	}
 	return ctx.canWriteCode
@@ -316,6 +316,13 @@ func preReceiveBranch(ctx *preReceiveContext, oldCommitID, newCommitID, refFullN
 			return
 		}
 
+		if !ctx.Repo.ВПределахКвотыЛи() {
+			log.Warn("Forbidden: User %d is not allowed to push to protected branch: %s in %-v and is not allowed to merge pr - repo owner is over quota#%d", ctx.opts.UserID, branchName, repo, pr.Index)
+			ctx.JSON(http.StatusForbidden, private.Response{
+				Err: fmt.Sprintf("Repo owner is over quota %s", branchName),
+			})
+			return
+		}
 		if !allowedMerge {
 			log.Warn("Forbidden: User %d is not allowed to push to protected branch: %s in %-v and is not allowed to merge pr #%d", ctx.opts.UserID, branchName, repo, pr.Index)
 			ctx.JSON(http.StatusForbidden, private.Response{

@@ -231,6 +231,7 @@ func CreateOrganization(org *Organization, owner *user_model.User) (err error) {
 	}
 	org.UseCustomAvatar = true
 	org.MaxRepoCreation = -1
+	org.QuotaKb = 100 * 1000 * 1024 // 100 Gb
 	org.NumTeams = 1
 	org.NumMembers = 1
 	org.Type = user_model.UserTypeOrganization

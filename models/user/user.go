@@ -146,6 +146,10 @@ type User struct {
 	DiffViewStyle       string `xorm:"NOT NULL DEFAULT ''"`
 	Theme               string `xorm:"NOT NULL DEFAULT ''"`
 	KeepActivityPrivate bool   `xorm:"NOT NULL DEFAULT false"`
+
+	// Ограничение пространства
+	QuotaKb     int64 `xorm:"NOT NULL DEFAULT 10000"` // 0 - нет ограничений
+	SpaceUsedKb int64 `xorm:"NOT NULL DEFAULT 18"`
 }
 
 func init() {
@@ -175,6 +179,10 @@ func (u *User) ColorFormat(s fmt.State) {
 func (u *User) BeforeUpdate() {
 	if u.MaxRepoCreation < -1 {
 		u.MaxRepoCreation = -1
+	}
+
+	if u.QuotaKb < 0 {
+		u.QuotaKb = 0
 	}
 
 	// Organization does not need email
@@ -248,11 +256,21 @@ func (u *User) MaxCreationLimit() int {
 	return u.MaxRepoCreation
 }
 
+func (u *User) ВПределахКвотыЛи() bool {
+	if u.SpaceUsedKb == 0 {
+		log.Error("ВПределахКвотыЛи(): SpaceUsedKb = 0. Пользователь не загружен?")
+	}
+	return u.QuotaKb >= u.SpaceUsedKb
+}
+
 // CanCreateRepo returns if user login can create a repository
 // NOTE: functions calling this assume a failure due to repository count limit; if new checks are added, those functions should be revised
 func (u *User) CanCreateRepo() bool {
 	if u.IsAdmin {
 		return true
+	}
+	if !u.ВПределахКвотыЛи() {
+		return false
 	}
 	if u.MaxRepoCreation <= -1 {
 		if setting.Repository.MaxCreationLimit <= -1 {
@@ -638,6 +656,7 @@ func CreateUser(u *User, overwriteDefault ...*CreateUserOverwriteOptions) (err e
 	u.EmailNotificationsPreference = setting.Admin.DefaultEmailNotification
 	u.MaxRepoCreation = -1
 	u.Theme = setting.UI.DefaultTheme
+	u.QuotaKb = 400000 // прибитая гвоздями квота по умолчанию
 
 	// overwrite defaults if set
 	if len(overwriteDefault) != 0 && overwriteDefault[0] != nil {

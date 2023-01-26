@@ -77,6 +77,13 @@
 							<input id="max_repo_creation" name="max_repo_creation" type="number" value="{{.Org.MaxRepoCreation}}">
 							<p class="help">{{.i18n.Tr "admin.users.max_repo_creation_desc"}}</p>
 						</div>
+
+						<div class="inline field {{if .Err_QuotaKb}}error{{end}}">
+							<label for="quota_kb">Квота, кб</label>
+							<input id="quota_kb" name="quota_kb" type="number" value="{{.Org.QuotaKb}}">
+							<p class="help">Квота (макс сумма размера данных, принадлежащих непосредственно организации, а не её членам)</p>
+						</div>
+
 						{{end}}
 
 						<div class="field">

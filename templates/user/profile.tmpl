@@ -48,6 +48,8 @@
 								{{end}}
 							{{end}}
 							<li>{{svg "octicon-clock"}} {{.i18n.Tr "user.join_on"}} {{.Owner.CreatedUnix.FormatShort}}</li>
+							<li>{{svg "octicon-database"}} {{if .Owner.ВПределахКвотыЛи}}использовано{{else}}квота превышена:{{end}} 
+							{{.Owner.SpaceUsedKb}} из {{.Owner.QuotaKb}}</li>
 							{{if and .Orgs .HasOrgsVisible}}
 							<li>
 								<ul class="user-orgs">

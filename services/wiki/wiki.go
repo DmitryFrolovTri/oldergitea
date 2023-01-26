@@ -123,6 +123,11 @@ func updateWikiPage(doer *user_model.User, repo *repo_model.Repository, oldWikiN
 	if err = nameAllowed(newWikiName); err != nil {
 		return err
 	}
+
+	if !repo.Owner.ВПределахКвотыЛи() {
+		return fmt.Errorf("пользователь вне пределов квоты")
+	}
+
 	wikiWorkingPool.CheckIn(fmt.Sprint(repo.ID))
 	defer wikiWorkingPool.CheckOut(fmt.Sprint(repo.ID))
 
@@ -263,7 +268,9 @@ func updateWikiPage(doer *user_model.User, repo *repo_model.Repository, oldWikiN
 		return fmt.Errorf("Push: %v", err)
 	}
 
-	return nil
+	err = models.UpdateRepoSize(gitRepo.Ctx, repo)
+
+	return err
 }
 
 // AddWikiPage adds a new wiki page with a given wikiPath.

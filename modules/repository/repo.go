@@ -385,6 +385,7 @@ func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Re
 	}
 
 	var batch []lfs.Pointer
+	var totalLfsSize int64
 	for pointerBlob := range pointerChan {
 		meta, err := models.GetLFSMetaObjectByOid(repo.ID, pointerBlob.Oid)
 		if err != nil && err != models.ErrLFSObjectNotExist {
@@ -412,9 +413,17 @@ func StoreMissingLfsObjectsInRepository(ctx context.Context, repo *repo_model.Re
 				return err
 			}
 		} else {
-			if setting.LFS.MaxFileSize > 0 && pointerBlob.Size > setting.LFS.MaxFileSize {
-				log.Info("Repo[%-v]: LFS object %-v download denied because of LFS_MAX_FILE_SIZE=%d < size %d", repo, pointerBlob.Pointer, setting.LFS.MaxFileSize, pointerBlob.Size)
-				continue
+			if setting.LFS.MaxFileSize > 0 {
+				if pointerBlob.Size > setting.LFS.MaxFileSize {
+					log.Info("Repo[%-v]: LFS object %-v download denied because of LFS_MAX_FILE_SIZE=%d < size %d", repo, pointerBlob.Pointer, setting.LFS.MaxFileSize, pointerBlob.Size)
+					continue
+				}
+				totalLfsSize += pointerBlob.Size
+				if totalLfsSize > setting.LFS.MaxFileSize {
+					// при превышении размера единичным файлом тоже следовало бы возвращать ошибку
+					log.Error("Repo[%-v]: Не могу загрузить пачку LFS объектов суммарным объёмом, превышающим LFS_MAX_FILE_SIZE=%d", repo, setting.LFS.MaxFileSize)
+					return err
+				}
 			}
 
 			batch = append(batch, pointerBlob.Pointer)

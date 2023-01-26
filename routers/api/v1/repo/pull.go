@@ -758,7 +758,10 @@ func MergePullRequest(ctx *context.APIContext) {
 		ctx.Error(http.StatusMethodNotAllowed, "Merge", "User not allowed to merge PR")
 		return
 	}
-
+	if !(ctx.User.ВПределахКвотыЛи() && ctx.Repo.ВПределахКвотыЛи()) {
+		ctx.Error(http.StatusMethodNotAllowed, "Merge", "User or repo is out of quota")
+		return
+	}
 	if pr.HasMerged {
 		ctx.Error(http.StatusMethodNotAllowed, "PR already merged", "")
 		return
